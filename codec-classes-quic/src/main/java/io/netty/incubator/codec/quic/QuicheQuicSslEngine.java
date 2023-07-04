@@ -102,6 +102,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
     public SSLParameters getSSLParameters() {
         SSLParameters parameters = super.getSSLParameters();
         parameters.setServerNames(sniHostNames);
+        parameters.setEndpointIdentificationAlgorithm("HTTPS");
         return parameters;
     }
 
