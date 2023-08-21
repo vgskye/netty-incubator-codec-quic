@@ -19,15 +19,19 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.internal.ClassInitializerUtil;
-import io.netty.util.internal.NativeLibraryLoader;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 
 final class Quiche {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(Quiche.class);
@@ -66,15 +70,38 @@ final class Quiche {
     private static void loadNativeLibrary() {
         // This needs to be kept in sync with what is defined in netty_quic_quiche.c
         String libName = "netty_quiche";
-        ClassLoader cl = PlatformDependent.getClassLoader(Quiche.class);
 
         if (!PlatformDependent.isAndroid()) {
             libName += '_' + PlatformDependent.normalizedOs()
-                    + '_' + PlatformDependent.normalizedArch();
+                    + '_' + PlatformDependent.normalizedArch()
+                    + "_49";
+        }
+
+        String libraryPath = System.getProperty("link.e4mc.native_path");
+
+        if (libraryPath == null) {
+            String home = System.getProperty("user.home");
+            String fileName = System.mapLibraryName(libName);
+            String folderPath = home + File.separatorChar + ".e4mc_cache";
+            libraryPath = folderPath + File.separatorChar + fileName;
+            new File(folderPath).mkdirs();
+            if (!new File(folderPath).isFile()) {
+                try {
+                    URL url = new URL(System.getProperty("link.e4mc.native_url", "https://natives.e4mc.link/" + fileName));
+                    ReadableByteChannel rbc = Channels.newChannel(url.openStream());
+                    FileOutputStream fos = new FileOutputStream(libraryPath);
+                    fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
+                    fos.close();
+                    rbc.close();
+                } catch (Exception e) {
+                    logger.debug("Failed to load {}", libName, e);
+                    throw new RuntimeException(e);
+                }
+            }
         }
 
         try {
-            NativeLibraryLoader.load(libName, cl);
+            System.load(libraryPath);
         } catch (UnsatisfiedLinkError e) {
             logger.debug("Failed to load {}", libName, e);
             throw e;
