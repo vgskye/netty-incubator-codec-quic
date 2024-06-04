@@ -145,17 +145,19 @@ final class Quiche {
 
     private static byte[] get_native_hash(String filename) {
         switch (filename) {
-            case "libnetty_quiche_linux_aarch_64.so":
+            case "libnetty_quiche_linux_aarch_64_63.so":
                 return new byte[]{-20, -55, 20, 75, -33, 44, -125, -123, 31, -101, 69, 109, -108, -22, -10, -90, 20, -124, -72, -40, 66, 71, -28, -46, 74, 77, -5, 50, -84, 98, -10, -40};
-            case "libnetty_quiche_linux_x86_64.so":
+            case "libnetty_quiche_linux_x86_64_63.so":
                 return new byte[]{86, 12, -81, 24, 61, -118, -126, -6, 31, 88, 17, -32, -83, -106, 70, 95, 73, 75, -54, -93, -15, 0, 81, -111, 110, -42, 25, -90, -100, -12, -102, -27};
-            case "libnetty_quiche_osx_aarch_64.dylib":
-            case "libnetty_quiche_osx_aarch_64.jnilib":
+            case "libnetty_quiche_osx_aarch_64_63.dylib":
                 return new byte[]{125, -82, 116, 47, 119, -63, 37, -6, 42, -68, 117, 80, 19, 93, -1, -115, -83, 49, 33, -48, -59, -95, -96, -37, 121, 108, -114, 113, 94, 65, -88, -91};
-            case "libnetty_quiche_osx_x86_64.dylib":
-            case "libnetty_quiche_osx_x86_64.jnilib":
+            case "libnetty_quiche_osx_aarch_64_63.jnilib":
+                return new byte[]{125, -82, 116, 47, 119, -63, 37, -6, 42, -68, 117, 80, 19, 93, -1, -115, -83, 49, 33, -48, -59, -95, -96, -37, 121, 108, -114, 113, 94, 65, -88, -91};
+            case "libnetty_quiche_osx_x86_64_63.dylib":
                 return new byte[]{21, 2, 93, -98, 111, -54, 108, -59, -123, 73, 48, -69, -45, 99, 37, -75, -86, 8, 28, -60, -118, 102, -23, 18, -44, 126, 53, -75, -93, 126, 3, 102};
-            case "netty_quiche_windows_x86_64.dll":
+            case "libnetty_quiche_osx_x86_64_63.jnilib":
+                return new byte[]{21, 2, 93, -98, 111, -54, 108, -59, -123, 73, 48, -69, -45, 99, 37, -75, -86, 8, 28, -60, -118, 102, -23, 18, -44, 126, 53, -75, -93, 126, 3, 102};
+            case "netty_quiche_windows_x86_64_63.dll":
                 return new byte[]{-83, -27, 18, -60, -107, -73, -6, 95, -52, -95, -92, -68, -71, 69, 45, -2, 53, 65, -123, 52, 56, -108, 98, 96, -33, 110, 122, 115, -67, -13, -118, -57};
         }
         return new byte[]{};

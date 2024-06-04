@@ -30,13 +30,14 @@ for os in OS:
                 continue
             if entry.filename.startswith("META-INF/native/"):
                 nf = zf.open(entry)
+                fn = entry.filename.split("/")[-1].replace(".", f"_{VER}.")
                 if entry.filename.endswith(".jnilib"):
-                    newfn = entry.filename.split("/")[-1].replace(".jnilib", ".dylib")
+                    newfn = fn.replace(".jnilib", ".dylib")
                     with open("native/" + newfn, "wb") as wf:
                         print(newfn)
                         shutil.copyfileobj(nf, wf)
                         nf.seek(0)
-                with open("native/" + entry.filename.split("/")[-1], "wb") as wf:
-                    print(entry.filename.split("/")[-1])
+                with open("native/" + fn, "wb") as wf:
+                    print(fn)
                     shutil.copyfileobj(nf, wf)
 
