@@ -18,6 +18,7 @@ package io.netty.incubator.codec.quic;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerAdapter;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.FixedRecvByteBufAllocator;
@@ -30,6 +31,7 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.util.NetUtil;
+import org.jetbrains.annotations.Nullable;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executor;
@@ -56,6 +58,13 @@ final class QuicTestUtils {
 
     private static final EventLoopGroup GROUP = Epoll.isAvailable() ? new EpollEventLoopGroup() :
             new NioEventLoopGroup();
+
+    static final ChannelHandlerAdapter NOOP_HANDLER = new ChannelHandlerAdapter() {
+        @Override
+        public boolean isSharable() {
+            return true;
+        }
+    };
 
     static {
         Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -148,7 +157,7 @@ final class QuicTestUtils {
     }
 
     private static Bootstrap newServerBootstrap(QuicServerCodecBuilder serverBuilder,
-                                                QuicTokenHandler tokenHandler, ChannelHandler handler,
+                                                QuicTokenHandler tokenHandler, @Nullable ChannelHandler handler,
                                                 ChannelHandler streamHandler) {
         serverBuilder.tokenHandler(tokenHandler)
                 .streamHandler(streamHandler);
@@ -156,9 +165,12 @@ final class QuicTestUtils {
             serverBuilder.handler(handler);
         }
         ChannelHandler codec = serverBuilder.build();
+        return newServerBootstrap()
+                .handler(codec);
+    }
+
+    static Bootstrap newServerBootstrap() {
         return newBootstrap()
-                // We don't want any special handling of the channel so just use a dummy handler.
-                .handler(codec)
                 .localAddress(new InetSocketAddress(NetUtil.LOCALHOST4, 0));
     }
 
@@ -180,10 +192,17 @@ final class QuicTestUtils {
         return newServer(sslTaskExecutor, InsecureQuicTokenHandler.INSTANCE, handler, streamHandler);
     }
 
-    static void closeIfNotNull(Channel channel) throws Exception {
+    static void closeIfNotNull(@Nullable Channel channel) throws Exception {
         if (channel != null) {
             channel.close().sync();
         }
     }
 
+    @Nullable
+    static ChannelOption<Boolean> soReusePortOption() {
+        if (GROUP instanceof EpollEventLoopGroup) {
+            return EpollChannelOption.SO_REUSEPORT;
+        }
+        return null;
+    }
 }

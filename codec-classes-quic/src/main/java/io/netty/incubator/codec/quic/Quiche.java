@@ -17,11 +17,12 @@ package io.netty.incubator.codec.quic;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.ChannelPromise;
+import io.netty.util.collection.IntObjectHashMap;
 import io.netty.util.internal.ClassInitializerUtil;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import org.jetbrains.annotations.Nullable;
 
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
@@ -36,9 +37,10 @@ import java.nio.channels.ReadableByteChannel;
 final class Quiche {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(Quiche.class);
     private static final boolean DEBUG_LOGGING_ENABLED = logger.isDebugEnabled();
+    private static final IntObjectHashMap<QuicTransportErrorHolder> ERROR_MAPPINGS = new IntObjectHashMap<>();
 
     static {
-        // Preload all classes that will be used in the OnLoad(...) function of JNI to eliminate the possiblity of a
+        // Preload all classes that will be used in the OnLoad(...) function of JNI to eliminate the possibility of a
         // class-loader deadlock. This is a workaround for https://github.com/netty/netty/issues/11209.
 
         // This needs to match all the classes that are loaded via NETTY_JNI_UTIL_LOAD_CLASS or looked up via
@@ -299,6 +301,9 @@ final class Quiche {
     static final int QUICHE_ERR_KEY_UPDATE =
             QuicheNativeStaticallyReferencedJniMethods.quiche_err_key_update();
 
+    static final int QUICHE_ERR_CRYPTO_BUFFER_EXCEEDED =
+            QuicheNativeStaticallyReferencedJniMethods.quiche_err_crypto_buffer_exceeded();
+
     /**
      * See <a href="https://github.com/cloudflare/quiche/blob/0.6.0/include/quiche.h#L176">
      *     QUICHE_CC_RENO</a>.
@@ -317,9 +322,17 @@ final class Quiche {
      */
     static final int QUICHE_CC_BBR = QuicheNativeStaticallyReferencedJniMethods.quiche_cc_bbr();
 
+    static final int QUICHE_PATH_EVENT_NEW = QuicheNativeStaticallyReferencedJniMethods.quiche_path_event_new();
+    static final int QUICHE_PATH_EVENT_VALIDATED = QuicheNativeStaticallyReferencedJniMethods.quiche_path_event_validated();
+    static final int QUICHE_PATH_EVENT_FAILED_VALIDATION = QuicheNativeStaticallyReferencedJniMethods.quiche_path_event_failed_validation();
+    static final int QUICHE_PATH_EVENT_CLOSED = QuicheNativeStaticallyReferencedJniMethods.quiche_path_event_closed();
+    static final int QUICHE_PATH_EVENT_REUSED_SOURCE_CONNECTION_ID = QuicheNativeStaticallyReferencedJniMethods.quiche_path_event_reused_source_connection_id();
+    static final int QUICHE_PATH_EVENT_PEER_MIGRATED = QuicheNativeStaticallyReferencedJniMethods.quiche_path_event_peer_migrated();
+
     /**
      * See <a href="https://github.com/cloudflare/quiche/blob/0.6.0/include/quiche.h#L105">quiche_version</a>.
      */
+    @Nullable
     static native String quiche_version();
 
     /**
@@ -375,6 +388,7 @@ final class Quiche {
      */
     static native void quiche_conn_free(long connAddr);
 
+    @Nullable
     static QuicConnectionCloseEvent quiche_conn_peer_error(long connAddr) {
         Object[] error =  quiche_conn_peer_error0(connAddr);
         if (error == null) {
@@ -383,7 +397,7 @@ final class Quiche {
         return new QuicConnectionCloseEvent((Boolean) error[0], (Integer) error[1], (byte[]) error[2]);
     }
 
-    private static native Object[] quiche_conn_peer_error0(long connAddr);
+    private static native Object @Nullable [] quiche_conn_peer_error0(long connAddr);
 
     /**
      * See <a href="https://github.com/cloudflare/quiche/blob/0.7.0/include/quiche.h#L330">
@@ -409,7 +423,7 @@ final class Quiche {
     /**
      * See <a href="https://github.com/cloudflare/quiche/blob/0.7.0/include/quiche.h#L309">quiche_conn_trace_id</a>.
      */
-    static native byte[] quiche_conn_trace_id(long connAddr);
+    static native byte @Nullable [] quiche_conn_trace_id(long connAddr);
 
     static native byte[] quiche_conn_source_id(long connAddr);
 
@@ -481,7 +495,14 @@ final class Quiche {
      * <a href="https://github.com/cloudflare/quiche/blob/0.6.0/include/quiche.h#L340">quiche_stats</a> being numerical.
      * The assumption made allows passing primitive array rather than dealing with objects.
      */
-    static native long[] quiche_conn_stats(long connAddr);
+    static native long @Nullable [] quiche_conn_stats(long connAddr);
+
+    /**
+     * See
+     * <a href="https://github.com/cloudflare/quiche/blob/master/quiche/include/quiche.h#L567C65-L567C88">
+     *     quiche_conn_stats</a>.
+     */
+    static native long @Nullable [] quiche_conn_peer_transport_params(long connAddr);
 
     /**
      * See
@@ -523,6 +544,13 @@ final class Quiche {
      *
      */
     static native void quiche_stream_iter_free(long iterAddr);
+
+
+    /**
+     * See
+     * <a href="https://github.com/cloudflare/quiche/blob/0.20.0/quiche/include/quiche.h#L672">quiche_conn_path_stats</a>.
+     */
+    static native Object @Nullable [] quiche_conn_path_stats(long connAddr, long streamIdx);
 
     /**
      * See
@@ -566,6 +594,22 @@ final class Quiche {
      *     quiche_conn_max_send_udp_payload_size</a>.
      */
     static native int quiche_conn_max_send_udp_payload_size(long connAddr);
+
+    static native int quiche_conn_scids_left(long connAddr);
+
+    static native long quiche_conn_new_scid(long connAddr, long scidAddr, int scidLen, byte[] resetToken, boolean retire_if_needed, long seq);
+
+    static native byte @Nullable [] quiche_conn_retired_scid_next(long connAddr);
+
+    static native long quiche_conn_path_event_next(long connAddr);
+    static native int quiche_path_event_type(long pathEvent);
+    static native void quiche_path_event_free(long pathEvent);
+    static native Object[] quiche_path_event_new(long pathEvent);
+    static native Object[] quiche_path_event_validated(long pathEvent);
+    static native Object[] quiche_path_event_failed_validation(long pathEvent);
+    static native Object[]  quiche_path_event_closed(long pathEvent);
+    static native Object[] quiche_path_event_reused_source_connection_id(long pathEvent);
+    static native Object[] quiche_path_event_peer_migrated(long pathEvent);
 
     /**
      * See
@@ -771,47 +815,8 @@ final class Quiche {
         return PlatformDependent.BIG_ENDIAN_NATIVE_ORDER ? buffer : buffer.order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    static Exception newException(int err) {
-        final QuicError error = QuicError.valueOf(err);
-        final QuicException reason = new QuicException(error);
-        if (err == QUICHE_ERR_TLS_FAIL) {
-            String lastSslError = BoringSSL.ERR_last_error();
-            final String message;
-            if (lastSslError != null) {
-                message = error.message() + ": " + lastSslError;
-            } else {
-                message = error.message();
-            }
-            final SSLHandshakeException sslExc = new SSLHandshakeException(message);
-            sslExc.initCause(reason);
-            return sslExc;
-        }
-        if (err == QUICHE_ERR_CRYPTO_FAIL) {
-            return new SSLException(error.message(), reason);
-        }
-        return reason;
-    }
-
     static boolean shouldClose(int res)  {
         return res == Quiche.QUICHE_ERR_CRYPTO_FAIL || res == Quiche.QUICHE_ERR_TLS_FAIL;
-    }
-
-    static boolean throwIfError(int res) throws Exception {
-        if (res < 0) {
-             if (res == Quiche.QUICHE_ERR_DONE) {
-                 return true;
-             }
-            throw Quiche.newException(res);
-        }
-        return false;
-    }
-
-    static void notifyPromise(int res, ChannelPromise promise) {
-        if (res < 0 && res != Quiche.QUICHE_ERR_DONE) {
-            promise.setFailure(Quiche.newException(res));
-        } else {
-            promise.setSuccess();
-        }
     }
 
     /**
@@ -859,6 +864,71 @@ final class Quiche {
                 return memory.getLong(offset);
             default:
                 throw new IllegalStateException();
+        }
+    }
+
+    // See https://github.com/cloudflare/quiche/commit/1d00ee1bb2256dfd99ba0cb2dfac72fe1e59407f
+    static {
+        ERROR_MAPPINGS.put(QUICHE_ERR_DONE,
+                new QuicTransportErrorHolder(QuicTransportError.NO_ERROR, "QUICHE_ERR_DONE"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_INVALID_FRAME,
+                new QuicTransportErrorHolder(QuicTransportError.FRAME_ENCODING_ERROR, "QUICHE_ERR_INVALID_FRAME"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_INVALID_STREAM_STATE,
+                new QuicTransportErrorHolder(QuicTransportError.STREAM_STATE_ERROR, "QUICHE_ERR_INVALID_STREAM_STATE"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_INVALID_TRANSPORT_PARAM,
+                new QuicTransportErrorHolder(QuicTransportError.TRANSPORT_PARAMETER_ERROR, "QUICHE_ERR_INVALID_TRANSPORT_PARAM"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_FLOW_CONTROL,
+                new QuicTransportErrorHolder(QuicTransportError.FLOW_CONTROL_ERROR, "QUICHE_ERR_FLOW_CONTROL"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_STREAM_LIMIT,
+                new QuicTransportErrorHolder(QuicTransportError.STREAM_LIMIT_ERROR, "QUICHE_ERR_STREAM_LIMIT"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_ID_LIMIT,
+                new QuicTransportErrorHolder(QuicTransportError.CONNECTION_ID_LIMIT_ERROR, "QUICHE_ERR_ID_LIMIT"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_FINAL_SIZE,
+                new QuicTransportErrorHolder(QuicTransportError.FINAL_SIZE_ERROR, "QUICHE_ERR_FINAL_SIZE"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_CRYPTO_BUFFER_EXCEEDED,
+                new QuicTransportErrorHolder(QuicTransportError.CRYPTO_BUFFER_EXCEEDED, "QUICHE_ERR_CRYPTO_BUFFER_EXCEEDED"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_KEY_UPDATE,
+                new QuicTransportErrorHolder(QuicTransportError.KEY_UPDATE_ERROR, "QUICHE_ERR_KEY_UPDATE"));
+
+        // Should the code be something different ?
+        ERROR_MAPPINGS.put(QUICHE_ERR_TLS_FAIL,
+                new QuicTransportErrorHolder(QuicTransportError.valueOf(0x0100), "QUICHE_ERR_TLS_FAIL"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_CRYPTO_FAIL,
+                new QuicTransportErrorHolder(QuicTransportError.valueOf(0x0100), "QUICHE_ERR_CRYPTO_FAIL"));
+
+        ERROR_MAPPINGS.put(QUICHE_ERR_BUFFER_TOO_SHORT,
+                new QuicTransportErrorHolder(QuicTransportError.PROTOCOL_VIOLATION, "QUICHE_ERR_BUFFER_TOO_SHORT"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_UNKNOWN_VERSION, new QuicTransportErrorHolder(QuicTransportError.PROTOCOL_VIOLATION, "QUICHE_ERR_UNKNOWN_VERSION"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_INVALID_PACKET, new QuicTransportErrorHolder(QuicTransportError.PROTOCOL_VIOLATION, "QUICHE_ERR_INVALID_PACKET"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_INVALID_STATE, new QuicTransportErrorHolder(QuicTransportError.PROTOCOL_VIOLATION, "QUICHE_ERR_INVALID_STATE"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_CONGESTION_CONTROL, new QuicTransportErrorHolder(QuicTransportError.PROTOCOL_VIOLATION, "QUICHE_ERR_CONGESTION_CONTROL"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_STREAM_STOPPED, new QuicTransportErrorHolder(QuicTransportError.PROTOCOL_VIOLATION, "QUICHE_ERR_STREAM_STOPPED"));
+        ERROR_MAPPINGS.put(QUICHE_ERR_OUT_OF_IDENTIFIERS, new QuicTransportErrorHolder(QuicTransportError.PROTOCOL_VIOLATION, "QUICHE_ERR_OUT_OF_IDENTIFIERS"));
+    }
+
+    static Exception convertToException(int result) {
+        QuicTransportErrorHolder holder = ERROR_MAPPINGS.get(result);
+        assert holder != null;
+        Exception exception = new QuicException(holder.error + ": " + holder.quicheErrorName, holder.error);
+        if (result == QUICHE_ERR_TLS_FAIL) {
+            String lastSslError = BoringSSL.ERR_last_error();
+            final SSLHandshakeException sslExc = new SSLHandshakeException(lastSslError);
+            sslExc.initCause(exception);
+            return sslExc;
+        }
+        if (result == QUICHE_ERR_CRYPTO_FAIL) {
+            return new SSLException(exception);
+        }
+        return exception;
+    }
+
+    private static final class QuicTransportErrorHolder {
+        private final QuicTransportError error;
+        private final String quicheErrorName;
+
+        QuicTransportErrorHolder(QuicTransportError error, String quicheErrorName) {
+            this.error = error;
+            this.quicheErrorName = quicheErrorName;
         }
     }
 

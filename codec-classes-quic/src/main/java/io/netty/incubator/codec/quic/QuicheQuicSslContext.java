@@ -22,12 +22,12 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.Mapping;
 import io.netty.util.ReferenceCounted;
+import org.jetbrains.annotations.Nullable;
 
 import javax.crypto.NoSuchPaddingException;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLSession;
-import javax.net.ssl.SSLSessionContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509ExtendedKeyManager;
@@ -64,13 +64,16 @@ final class QuicheQuicSslContext extends QuicSslContext {
     private final QuicheQuicSslSessionContext sessionCtx;
     private final QuicheQuicSslEngineMap engineMap = new QuicheQuicSslEngineMap();
     private final QuicClientSessionCache sessionCache;
+
+    private final BoringSSLSessionTicketCallback sessionTicketCallback = new BoringSSLSessionTicketCallback();
+
     final NativeSslContext nativeSslContext;
 
     QuicheQuicSslContext(boolean server, long sessionTimeout, long sessionCacheSize,
-                         ClientAuth clientAuth, TrustManagerFactory trustManagerFactory,
-                         KeyManagerFactory keyManagerFactory, String password,
-                         Mapping<? super String, ? extends QuicSslContext> mapping,
-                         Boolean earlyData, BoringSSLKeylog keylog,
+                         ClientAuth clientAuth, @Nullable TrustManagerFactory trustManagerFactory,
+                         @Nullable KeyManagerFactory keyManagerFactory, String password,
+                         @Nullable Mapping<? super String, ? extends QuicSslContext> mapping,
+                         @Nullable Boolean earlyData, @Nullable BoringSSLKeylog keylog,
                          String... applicationProtocols) {
         Quic.ensureAvailability();
         this.server = server;
@@ -112,7 +115,8 @@ final class QuicheQuicSslContext extends QuicSslContext {
                 new BoringSSLCertificateVerifyCallback(engineMap, trustManager),
                 mapping == null ? null : new BoringSSLTlsextServernameCallback(engineMap, mapping),
                 keylog == null ? null : new BoringSSLKeylogCallback(engineMap, keylog),
-                server ? null : new BoringSSLSessionCallback(engineMap, sessionCache), privateKeyMethod, verifyMode,
+                server ? null : new BoringSSLSessionCallback(engineMap, sessionCache), privateKeyMethod,
+                sessionTicketCallback, verifyMode,
                 BoringSSL.subjectNames(trustManager.getAcceptedIssuers())));
         apn = new QuicheQuicApplicationProtocolNegotiator(applicationProtocols);
         if (this.sessionCache != null) {
@@ -153,11 +157,11 @@ final class QuicheQuicSslContext extends QuicSslContext {
         throw new IllegalArgumentException("No X509TrustManager included");
     }
 
-     static X509Certificate[] toX509Certificates0(File file) throws CertificateException {
+     static X509Certificate @Nullable [] toX509Certificates0(@Nullable File file) throws CertificateException {
         return toX509Certificates(file);
     }
 
-    static PrivateKey toPrivateKey0(File keyFile, String keyPassword) throws NoSuchAlgorithmException,
+    static PrivateKey toPrivateKey0(@Nullable File keyFile, @Nullable String keyPassword) throws NoSuchAlgorithmException,
             NoSuchPaddingException, InvalidKeySpecException,
             InvalidAlgorithmParameterException,
             KeyException, IOException {
@@ -165,7 +169,7 @@ final class QuicheQuicSslContext extends QuicSslContext {
     }
 
     static TrustManagerFactory buildTrustManagerFactory0(
-            X509Certificate[] certCollection)
+            X509Certificate @Nullable [] certCollection)
             throws NoSuchAlgorithmException, CertificateException, KeyStoreException, IOException {
         return buildTrustManagerFactory(certCollection, null, null);
     }
@@ -183,6 +187,7 @@ final class QuicheQuicSslContext extends QuicSslContext {
         }
     }
 
+    @Nullable
     QuicheQuicConnection createConnection(LongFunction<Long> connectionCreator, QuicheQuicSslEngine engine) {
         nativeSslContext.retain();
         long ssl = BoringSSL.SSL_new(nativeSslContext.address(), isServer(), engine.tlsHostName);
@@ -223,6 +228,7 @@ final class QuicheQuicSslContext extends QuicSslContext {
         engine.removeSessionFromCacheIfInvalid();
     }
 
+    @Nullable
     QuicClientSessionCache getSessionCache() {
         return sessionCache;
     }
@@ -275,7 +281,7 @@ final class QuicheQuicSslContext extends QuicSslContext {
     }
 
     @Override
-    public SSLSessionContext sessionContext() {
+    public QuicSslSessionContext sessionContext() {
         return sessionCtx;
     }
 
@@ -338,11 +344,17 @@ final class QuicheQuicSslContext extends QuicSslContext {
         }
     }
 
+    void setSessionTicketKeys(SslSessionTicketKey @Nullable [] ticketKeys) {
+        sessionTicketCallback.setSessionTicketKeys(ticketKeys);
+        BoringSSL.SSLContext_setSessionTicketKeys(
+                nativeSslContext.address(), ticketKeys != null && ticketKeys.length != 0);
+    }
+
     @SuppressWarnings("deprecation")
     private static final class QuicheQuicApplicationProtocolNegotiator implements ApplicationProtocolNegotiator {
         private final List<String> protocols;
 
-        QuicheQuicApplicationProtocolNegotiator(String... protocols) {
+        QuicheQuicApplicationProtocolNegotiator(String @Nullable ... protocols) {
             if (protocols == null) {
                 this.protocols = Collections.emptyList();
             } else {
@@ -356,8 +368,7 @@ final class QuicheQuicSslContext extends QuicSslContext {
         }
     }
 
-    private static final class QuicheQuicSslSessionContext implements SSLSessionContext {
-
+    private static final class QuicheQuicSslSessionContext implements QuicSslSessionContext {
         private final QuicheQuicSslContext context;
 
         QuicheQuicSslSessionContext(QuicheQuicSslContext context) {
@@ -365,6 +376,7 @@ final class QuicheQuicSslContext extends QuicSslContext {
         }
 
         @Override
+        @Nullable
         public SSLSession getSession(byte[] sessionId) {
             return null;
         }
@@ -402,6 +414,11 @@ final class QuicheQuicSslContext extends QuicSslContext {
         @Override
         public int getSessionCacheSize() {
             return (int) context.sessionCacheSize();
+        }
+
+        @Override
+        public void setTicketKeys(SslSessionTicketKey @Nullable ... keys) {
+            context.setSessionTicketKeys(keys);
         }
     }
 

@@ -21,6 +21,7 @@ import io.netty.handler.ssl.util.LazyX509Certificate;
 import io.netty.util.NetUtil;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.ObjectUtil;
+import org.jetbrains.annotations.Nullable;
 
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SNIServerName;
@@ -35,10 +36,12 @@ import javax.security.cert.X509Certificate;
 import java.nio.ByteBuffer;
 import java.security.Principal;
 import java.security.cert.Certificate;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.LongFunction;
 
 final class QuicheQuicSslEngine extends QuicSslEngine {
@@ -54,9 +57,9 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
     final String tlsHostName;
     volatile QuicheQuicConnection connection;
 
-    String sniHostname;
+    volatile Consumer<String> sniSelectedCallback;
 
-    QuicheQuicSslEngine(QuicheQuicSslContext ctx, String peerHost, int peerPort) {
+    QuicheQuicSslEngine(QuicheQuicSslContext ctx, @Nullable String peerHost, int peerPort) {
         this.ctx = ctx;
         this.peerHost = peerHost;
         this.peerPort = peerPort;
@@ -75,10 +78,14 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
         this.ctx.remove(this);
         this.ctx = ctx;
         long added = ctx.add(this);
-        sniHostname = hostname;
+        Consumer<String> sniSelectedCallback = this.sniSelectedCallback;
+        if (sniSelectedCallback != null) {
+            sniSelectedCallback.accept(hostname);
+        }
         return added;
     }
 
+    @Nullable
     QuicheQuicConnection createConnection(LongFunction<Long> connectionCreator) {
         return ctx.createConnection(connectionCreator, this);
     }
@@ -90,7 +97,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
     /**
      * Validate that the given hostname can be used in SNI extension.
      */
-    static boolean isValidHostNameForSNI(String hostname) {
+    static boolean isValidHostNameForSNI(@Nullable String hostname) {
         return hostname != null &&
                 hostname.indexOf('.') > 0 &&
                 !hostname.endsWith(".") &&
@@ -129,6 +136,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
     }
 
     @Override
+    @Nullable
     public Runnable getDelegatedTask() {
         return null;
     }
@@ -190,6 +198,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
     }
 
     @Override
+    @Nullable
     public SSLSession getHandshakeSession() {
         if (handshakeFinished) {
             return null;
@@ -255,7 +264,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
     synchronized void handshakeFinished(byte[] id, String cipher, String protocol, byte[] peerCertificate,
                                         byte[][] peerCertificateChain,
                                         long creationTime, long timeout,
-                                        byte[] applicationProtocol, boolean sessionReused) {
+                                        byte @Nullable [] applicationProtocol, boolean sessionReused) {
         if (applicationProtocol == null) {
             this.applicationProtocol = null;
         } else {
@@ -288,10 +297,10 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
         // lazy init for memory reasons
         private Map<String, Object> values;
 
-        private boolean isEmpty(Object[] arr) {
+        private boolean isEmpty(Object @Nullable [] arr) {
             return arr == null || arr.length == 0;
         }
-        private boolean isEmpty(byte[] arr) {
+        private boolean isEmpty(byte @Nullable [] arr) {
             return arr == null || arr.length == 0;
         }
 
@@ -439,6 +448,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
         }
 
         @Override
+        @Nullable
         public Object getValue(String name) {
             ObjectUtil.checkNotNull(name, "name");
             synchronized (this) {
@@ -480,7 +490,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
             return new SSLSessionBindingEvent(session, name);
         }
 
-        private void notifyUnbound(Object value, String name) {
+        private void notifyUnbound(@Nullable Object value, String name) {
             if (value instanceof SSLSessionBindingListener) {
                 // Use newSSLSessionBindingEvent so we alway use the wrapper if needed.
                 ((SSLSessionBindingListener) value).valueUnbound(newSSLSessionBindingEvent(name));
@@ -498,7 +508,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
         }
 
         @Override
-        public Certificate[] getLocalCertificates() {
+        public Certificate @Nullable [] getLocalCertificates() {
             Certificate[] localCerts = localCertificateChain;
             if (localCerts == null) {
                 return null;
@@ -525,6 +535,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
         }
 
         @Override
+        @Nullable
         public Principal getLocalPrincipal() {
             Certificate[] local = localCertificateChain;
             if (local == null || local.length == 0) {
@@ -544,6 +555,7 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
         }
 
         @Override
+        @Nullable
         public String getPeerHost() {
             return peerHost;
         }
@@ -561,6 +573,23 @@ final class QuicheQuicSslEngine extends QuicSslEngine {
         @Override
         public int getApplicationBufferSize() {
             return -1;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            QuicheQuicSslSession that = (QuicheQuicSslSession) o;
+            return Arrays.equals(getId(), that.getId());
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(getId());
         }
     }
 }

@@ -17,6 +17,7 @@ package io.netty.incubator.codec.quic;
 
 
 import io.netty.util.CharsetUtil;
+import org.jetbrains.annotations.Nullable;
 
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
@@ -83,18 +84,21 @@ final class BoringSSLCertificateCallback {
                     KEY_TYPE_EC_RSA,
                     KEY_TYPE_EC_EC)));
 
+    // Directly returning this is safe as we never modify it within our JNI code.
+    private static final long[] NO_KEY_MATERIAL_CLIENT_SIDE =  new long[] { 0, 0 };
+
     private final QuicheQuicSslEngineMap engineMap;
     private final X509ExtendedKeyManager keyManager;
     private final String password;
 
-    BoringSSLCertificateCallback(QuicheQuicSslEngineMap engineMap, X509ExtendedKeyManager keyManager, String password) {
+    BoringSSLCertificateCallback(QuicheQuicSslEngineMap engineMap, @Nullable X509ExtendedKeyManager keyManager, String password) {
         this.engineMap = engineMap;
         this.keyManager = keyManager;
         this.password = password;
     }
 
     @SuppressWarnings("unused")
-    long[] handle(long ssl, byte[] keyTypeBytes, byte[][] asn1DerEncodedPrincipals, String[] authMethods) {
+    long @Nullable [] handle(long ssl, byte[] keyTypeBytes, byte @Nullable [][] asn1DerEncodedPrincipals, String[] authMethods) {
         QuicheQuicSslEngine engine = engineMap.get(ssl);
         if (engine == null) {
             return null;
@@ -102,7 +106,9 @@ final class BoringSSLCertificateCallback {
 
         try {
             if (keyManager == null) {
-                engineMap.remove(ssl);
+                if (engine.getUseClientMode()) {
+                    return NO_KEY_MATERIAL_CLIENT_SIDE;
+                }
                 return null;
             }
             if (engine.getUseClientMode()) {
@@ -132,14 +138,14 @@ final class BoringSSLCertificateCallback {
         }
     }
 
-    private long[] removeMappingIfNeeded(long ssl, long[] result) {
+    private long @Nullable [] removeMappingIfNeeded(long ssl, long @Nullable [] result) {
         if (result == null) {
             engineMap.remove(ssl);
         }
         return result;
     }
 
-    private long[] selectKeyMaterialServerSide(long ssl, QuicheQuicSslEngine engine, String[] authMethods)
+    private long @Nullable [] selectKeyMaterialServerSide(long ssl, QuicheQuicSslEngine engine, String[] authMethods)
             throws SSLException {
         if (authMethods.length == 0) {
             throw new SSLHandshakeException("Unable to find key material");
@@ -162,8 +168,8 @@ final class BoringSSLCertificateCallback {
                 + Arrays.toString(authMethods));
     }
 
-    private long[] selectKeyMaterialClientSide(long ssl, QuicheQuicSslEngine engine, String[] keyTypes,
-                                               X500Principal[] issuer) {
+    private long @Nullable [] selectKeyMaterialClientSide(long ssl, QuicheQuicSslEngine engine, String[] keyTypes,
+                                               X500Principal @Nullable [] issuer) {
         String alias = chooseClientAlias(engine, keyTypes, issuer);
         // Only try to set the keymaterial if we have a match. This is also consistent with what OpenJDK does:
         // https://hg.openjdk.java.net/jdk/jdk11/file/76072a077ee1/
@@ -171,10 +177,10 @@ final class BoringSSLCertificateCallback {
         if (alias != null) {
             return selectMaterial(ssl, engine, alias) ;
         }
-        return null;
+        return NO_KEY_MATERIAL_CLIENT_SIDE;
     }
 
-    private long[] selectMaterial(long ssl, QuicheQuicSslEngine engine, String alias)  {
+    private long @Nullable [] selectMaterial(long ssl, QuicheQuicSslEngine engine, String alias)  {
         X509Certificate[] certificates = keyManager.getCertificateChain(alias);
         if (certificates == null || certificates.length == 0) {
             return null;
@@ -207,7 +213,7 @@ final class BoringSSLCertificateCallback {
         return new long[] { key,  chain };
     }
 
-    private static byte[] toPemEncoded(PrivateKey key) {
+    private static byte @Nullable [] toPemEncoded(PrivateKey key) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             out.write(BEGIN_PRIVATE_KEY);
             out.write(Base64.getEncoder().encode(key.getEncoded()));
@@ -217,11 +223,14 @@ final class BoringSSLCertificateCallback {
             return null;
         }
     }
+
+    @Nullable
     private String chooseClientAlias(QuicheQuicSslEngine engine,
-                                     String[] keyTypes, X500Principal[] issuer) {
+                                     String[] keyTypes, X500Principal @Nullable [] issuer) {
         return keyManager.chooseEngineClientAlias(keyTypes, issuer, engine);
     }
 
+    @Nullable
     private String chooseServerAlias(QuicheQuicSslEngine engine, String type) {
         return keyManager.chooseEngineServerAlias(type, null, engine);
     }
@@ -234,7 +243,7 @@ final class BoringSSLCertificateCallback {
      * @return supported key types that can be used in {@code X509KeyManager.chooseClientAlias} and
      *         {@code X509ExtendedKeyManager.chooseEngineClientAlias}.
      */
-    private static Set<String> supportedClientKeyTypes(byte[] clientCertificateTypes) {
+    private static Set<String> supportedClientKeyTypes(byte @Nullable[] clientCertificateTypes) {
         if (clientCertificateTypes == null) {
             // Try all of the supported key types.
             return SUPPORTED_KEY_TYPES;
@@ -251,6 +260,7 @@ final class BoringSSLCertificateCallback {
         return result;
     }
 
+    @Nullable
     private static String clientKeyType(byte clientCertificateType) {
         // See also https://www.ietf.org/assignments/tls-parameters/tls-parameters.xml
         switch (clientCertificateType) {

@@ -18,11 +18,13 @@ package io.netty.incubator.codec.quic;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
+import org.jetbrains.annotations.Nullable;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -43,33 +45,34 @@ final class QuicheQuicClientCodec extends QuicheQuicCodec {
     }
 
     @Override
+    @Nullable
     protected QuicheQuicChannel quicPacketRead(
             ChannelHandlerContext ctx, InetSocketAddress sender, InetSocketAddress recipient,
             QuicPacketType type, int version, ByteBuf scid, ByteBuf dcid,
-            ByteBuf token) {
+            ByteBuf token, ByteBuf senderSockaddrMemory, ByteBuf recipientSockaddrMemory,
+            Consumer<QuicheQuicChannel> freeTask, int localConnIdLength, QuicheConfig config) {
         ByteBuffer key = dcid.internalNioBuffer(dcid.readerIndex(), dcid.readableBytes());
         return getChannel(key);
     }
 
     @Override
-    public void connect(ChannelHandlerContext ctx, SocketAddress remoteAddress,
-                        SocketAddress localAddress, ChannelPromise promise) {
-        final QuicheQuicChannel channel;
+    protected void connectQuicChannel(QuicheQuicChannel channel, SocketAddress remoteAddress,
+                                      SocketAddress localAddress, ByteBuf senderSockaddrMemory,
+                                      ByteBuf recipientSockaddrMemory, Consumer<QuicheQuicChannel> freeTask,
+                                      int localConnIdLength, QuicheConfig config, ChannelPromise promise) {
         try {
-            channel = QuicheQuicChannel.handleConnect(sslEngineProvider, sslTaskExecutor, remoteAddress, config.nativeAddress(),
+            channel.connectNow(sslEngineProvider, sslTaskExecutor, freeTask, config.nativeAddress(),
                     localConnIdLength, config.isDatagramSupported(),
                     senderSockaddrMemory.internalNioBuffer(0, senderSockaddrMemory.capacity()),
                     recipientSockaddrMemory.internalNioBuffer(0, recipientSockaddrMemory.capacity()));
-        } catch (Exception e) {
-            promise.setFailure(e);
+        } catch (Throwable cause) {
+            // Only fail the original promise. Cleanup will be done as part of the listener attached to it.
+            promise.setFailure(cause);
             return;
         }
-        if (channel != null) {
-            putChannel(channel);
-            channel.finishConnect();
-            promise.setSuccess();
-            return;
-        }
-        ctx.connect(remoteAddress, localAddress, promise);
+
+        addChannel(channel);
+        channel.finishConnect();
+        promise.setSuccess();
     }
 }

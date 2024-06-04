@@ -20,6 +20,7 @@ import io.netty.buffer.Unpooled;
 
 import java.net.InetSocketAddress;
 
+import static io.netty.incubator.codec.quic.Quiche.QUICHE_ERR_DONE;
 import static io.netty.incubator.codec.quic.Quiche.allocateNativeOrder;
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
@@ -106,11 +107,14 @@ public final class QuicHeaderParser implements AutoCloseable {
         dcidLenBuffer.setInt(0, Quiche.QUICHE_MAX_CONN_ID_LEN);
         tokenLenBuffer.setInt(0, maxTokenLength);
 
+        // TODO: Maybe we should implement this by ourself and just save the extra JNI call and memory copies.
+        //       Parsing should be relative straight forward.
+        //       See https://datatracker.ietf.org/doc/html/rfc9000#section-17
         int res = Quiche.quiche_header_info(
                 Quiche.readerMemoryAddress(packet), packet.readableBytes(),
                 localConnectionIdLength,
                 Quiche.memoryAddress(versionBuffer, 0, versionBuffer.capacity()),
-                Quiche.memoryAddress(typeBuffer, 0, versionBuffer.capacity()),
+                Quiche.memoryAddress(typeBuffer, 0, typeBuffer.capacity()),
                 Quiche.memoryAddress(scidBuffer, 0, scidBuffer.capacity()),
                 Quiche.memoryAddress(scidLenBuffer, 0, scidLenBuffer.capacity()),
                 Quiche.memoryAddress(dcidBuffer, 0, dcidBuffer.capacity()),
@@ -128,8 +132,8 @@ public final class QuicHeaderParser implements AutoCloseable {
                     scidBuffer.setIndex(0, scidLen),
                     dcidBuffer.setIndex(0, dcidLen),
                     tokenBuffer.setIndex(0, tokenLen));
-        } else {
-            throw Quiche.newException(res);
+        } else if (res != QUICHE_ERR_DONE) {
+            throw Quiche.convertToException(res);
         }
     }
 

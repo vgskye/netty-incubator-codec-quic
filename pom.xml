@@ -24,7 +24,7 @@
 
   <groupId>io.netty.incubator</groupId>
   <artifactId>netty-incubator-codec-parent-quic</artifactId>
-  <version>0.0.49.Final</version>
+  <version>0.0.63.Final</version>
   <name>Netty/Incubator/Codec/Parent/Quic</name>
   <packaging>pom</packaging>
   <url>https://netty.io/</url>
@@ -51,7 +51,7 @@
     <url>https://github.com/netty/netty-incubator-codec-quic</url>
     <connection>scm:git:git://github.com/netty/netty-incubator-codec-quic.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/netty/netty-incubator-codec-quic.git</developerConnection>
-    <tag>netty-incubator-codec-parent-quic-0.0.49.Final</tag>
+    <tag>netty-incubator-codec-parent-quic-0.0.63.Final</tag>
   </scm>
 
   <developers>
@@ -74,11 +74,11 @@
     <javaModuleName />
     <skipTests>false</skipTests>
     <packaging.type>jar</packaging.type>
-    <netty.version>4.1.95.Final</netty.version>
+    <netty.version>4.1.110.Final</netty.version>
     <netty.build.version>31</netty.build.version>
-    <netty.jni-util.version>0.0.7.Final</netty.jni-util.version>
+    <netty.jni-util.version>0.0.9.Final</netty.jni-util.version>
     <junit.version>5.9.0</junit.version>
-    <native.maven.plugin.version>0.9.22</native.maven.plugin.version>
+    <native.maven.plugin.version>0.9.27</native.maven.plugin.version>
     <test.argLine>-D_</test.argLine>
     <bundleNativeCode />
     <crossCompile />
@@ -259,7 +259,8 @@
           </systemPropertyVariables>
           <!-- Ensure the whole stacktrace is preserved when an exception is thrown. See https://issues.apache.org/jira/browse/SUREFIRE-1457 -->
           <trimStackTrace>false</trimStackTrace>
-          <argLine>${test.argLine}</argLine>
+          <!-- Always check JNI during test run so we catch bugs that could cause crashes -->
+          <argLine>-ea -Xcheck:jni ${test.argLine}</argLine>
         </configuration>
       </plugin>
       <!-- always produce osgi bundles -->
@@ -433,7 +434,7 @@
       <dependency>
         <groupId>ch.qos.logback</groupId>
         <artifactId>logback-classic</artifactId>
-        <version>1.3.8.</version>
+        <version>1.3.12</version>
         <scope>test</scope>
       </dependency>
       <!-- Also include bouncycastle so we can use SelfSignedCertificate even on more recent JDKs during testing -->
@@ -448,6 +449,18 @@
         <artifactId>assertj-core</artifactId>
         <version>3.20.2</version>
         <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.jetbrains</groupId>
+        <artifactId>annotations</artifactId>
+        <version>24.1.0</version>
+        <scope>provided</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.google.code.findbugs</groupId>
+        <artifactId>jsr305</artifactId>
+        <version>3.0.2</version>
+        <scope>provided</scope>
       </dependency>
     </dependencies>
 

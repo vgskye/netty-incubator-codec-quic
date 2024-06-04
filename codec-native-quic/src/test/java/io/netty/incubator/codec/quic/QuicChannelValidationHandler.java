@@ -18,29 +18,44 @@ package io.netty.incubator.codec.quic;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class QuicChannelValidationHandler extends ChannelInboundHandlerAdapter {
+    private volatile boolean wasActive;
 
+    private volatile QuicConnectionAddress localAddress;
+    private volatile QuicConnectionAddress remoteAddress;
     private volatile Throwable cause;
-
-    @Override
-    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-        if (evt instanceof QuicConnectionEvent && ((QuicConnectionEvent) evt).oldAddress() != null) {
-            fail("QuicConnectionEvent indication migration should never happen atm");
-        }
-        super.userEventTriggered(ctx, evt);
-    }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         this.cause = cause;
     }
 
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) {
+        localAddress = (QuicConnectionAddress) ctx.channel().localAddress();
+        remoteAddress = (QuicConnectionAddress) ctx.channel().remoteAddress();
+        wasActive = true;
+        ctx.fireChannelActive();
+    }
+
+    QuicConnectionAddress localAddress() {
+        return localAddress;
+    }
+
+    QuicConnectionAddress remoteAddress() {
+        return remoteAddress;
+    }
+
     void assertState() throws Throwable {
         if (cause != null) {
             throw cause;
         }
+        if (wasActive) {
+            // Validate that the addresses could be retrieved
+            assertNotNull(localAddress);
+            assertNotNull(remoteAddress);
+        }
     }
-
 }

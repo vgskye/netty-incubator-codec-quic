@@ -23,6 +23,7 @@ import io.netty.channel.ChannelProgressivePromise;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
+import org.jetbrains.annotations.Nullable;
 
 import javax.net.ssl.SSLEngine;
 import java.net.SocketAddress;
@@ -154,11 +155,12 @@ public interface QuicChannel extends Channel {
      *
      * @return the engine.
      */
+    @Nullable
     SSLEngine sslEngine();
 
     /**
      * Returns the number of streams that can be created before stream creation will fail
-     * with {@link QuicError#STREAM_LIMIT} error.
+     * with {@link QuicTransportError#STREAM_LIMIT_ERROR} error.
      *
      * @param type the stream type.
      * @return the number of streams left.
@@ -173,6 +175,56 @@ public interface QuicChannel extends Channel {
     boolean isTimedOut();
 
     /**
+     * Returns the {@link QuicTransportParameters} of the peer once received, or {@code null} if not known yet.
+     *
+     * @return peerTransportParams.
+     */
+    @Nullable
+    QuicTransportParameters peerTransportParameters();
+
+    /**
+     * Returns the local {@link QuicConnectionAddress}. This address might change over the life-time of the
+     * channel.
+     *
+     * @return  local   the local {@link QuicConnectionAddress} or {@code null} if none is assigned yet,
+     *                  or assigned anymore.
+     */
+    @Override
+    @Nullable
+    QuicConnectionAddress localAddress();
+
+    /**
+     * Returns the remote {@link QuicConnectionAddress}. This address might change over the life-time of the
+     * channel.
+     *
+     * @return  remote   the remote {@link QuicConnectionAddress} or {@code null} if none is assigned yet,
+     *                   or assigned anymore.
+     */
+    @Override
+    @Nullable
+    QuicConnectionAddress remoteAddress();
+
+    /**
+     * Returns the local {@link SocketAddress} of the underlying transport that received the data.
+     * This address might change over the life-time of the channel.
+     *
+     * @return  local   the local {@link SocketAddress} of the underlying transport or {@code null} if none is assigned
+     *                  yet, or assigned anymore.
+     */
+    @Nullable
+    SocketAddress localSocketAddress();
+
+    /**
+     * Returns the remote {@link SocketAddress} of the underlying transport to which the data is sent.
+     * This address might change over the life-time of the channel.
+     *
+     * @return  local   the remote {@link SocketAddress} of the underlying transport or {@code null} if none is assigned
+     *                  yet, or assigned anymore.
+     */
+    @Nullable
+    SocketAddress remoteSocketAddress();
+
+    /**
      * Creates a stream that is using this {@link QuicChannel} and notifies the {@link Future} once done.
      * The {@link ChannelHandler} (if not {@code null}) is added to the {@link io.netty.channel.ChannelPipeline} of the
      * {@link QuicStreamChannel} automatically.
@@ -182,7 +234,7 @@ public interface QuicChannel extends Channel {
      *                  {@link io.netty.channel.ChannelPipeline} during the stream creation.
      * @return          the {@link Future} that will be notified once the operation completes.
      */
-    default Future<QuicStreamChannel> createStream(QuicStreamType type, ChannelHandler handler) {
+    default Future<QuicStreamChannel> createStream(QuicStreamType type, @Nullable ChannelHandler handler) {
         return createStream(type, handler, eventLoop().newPromise());
     }
 
@@ -197,7 +249,7 @@ public interface QuicChannel extends Channel {
      * @param promise   the {@link ChannelPromise} that will be notified once the operation completes.
      * @return          the {@link Future} that will be notified once the operation completes.
      */
-    Future<QuicStreamChannel> createStream(QuicStreamType type, ChannelHandler handler,
+    Future<QuicStreamChannel> createStream(QuicStreamType type, @Nullable ChannelHandler handler,
                                            Promise<QuicStreamChannel> promise);
 
     /**
@@ -253,6 +305,23 @@ public interface QuicChannel extends Channel {
      * @return          the {@link Future} that is notified once the stats were collected.
      */
     Future<QuicConnectionStats> collectStats(Promise<QuicConnectionStats> promise);
+
+    /**
+     * Collects statistics about the path of the connection and notifies the {@link Future} once done.
+     *
+     * @return the {@link Future} that is notified once the stats were collected.
+     */
+    default Future<QuicConnectionPathStats> collectPathStats(int pathIdx) {
+        return collectPathStats(pathIdx, eventLoop().newPromise());
+    }
+
+    /**
+     * Collects statistics about the path of the connection and notifies the {@link Promise} once done.
+     *
+     * @param   promise the {@link ChannelPromise} that is notified once the stats were collected.
+     * @return          the {@link Future} that is notified once the stats were collected.
+     */
+    Future<QuicConnectionPathStats> collectPathStats(int pathIdx, Promise<QuicConnectionPathStats> promise);
 
     /**
      * Creates a new {@link QuicChannelBootstrap} that can be used to create and connect new {@link QuicChannel}s to

@@ -41,7 +41,7 @@ final class QuicheNativeStaticallyReferencedJniMethods {
     static native int quiche_err_id_limit();
     static native int quiche_err_out_of_identifiers();
     static native int quiche_err_key_update();
-
+    static native int quiche_err_crypto_buffer_exceeded();
     static native int quiche_cc_reno();
     static native int quiche_cc_cubic();
     static native int quiche_cc_bbr();
@@ -84,6 +84,13 @@ final class QuicheNativeStaticallyReferencedJniMethods {
     static native int timespecOffsetofTvNsec();
     static native int sizeofTimeT();
     static native int sizeofLong();
+
+    static native int quiche_path_event_new();
+    static native int quiche_path_event_validated();
+    static native int quiche_path_event_failed_validation();
+    static native int quiche_path_event_closed();
+    static native int quiche_path_event_reused_source_connection_id();
+    static native int quiche_path_event_peer_migrated();
 
     private QuicheNativeStaticallyReferencedJniMethods() { }
 }

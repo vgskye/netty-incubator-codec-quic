@@ -19,16 +19,20 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import org.jetbrains.annotations.Nullable;
 
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static io.netty.incubator.codec.quic.Quiche.allocateNativeOrder;
@@ -38,10 +42,10 @@ import static io.netty.incubator.codec.quic.Quiche.allocateNativeOrder;
  */
 final class QuicheQuicServerCodec extends QuicheQuicCodec {
     private static final InternalLogger LOGGER = InternalLoggerFactory.getInstance(QuicheQuicServerCodec.class);
-
     private final Function<QuicChannel, ? extends QuicSslEngine> sslEngineProvider;
     private final Executor sslTaskExecutor;
     private final QuicConnectionIdGenerator connectionIdAddressGenerator;
+    private final QuicResetTokenGenerator resetTokenGenerator;
     private final QuicTokenHandler tokenHandler;
     private final ChannelHandler handler;
     private final Map.Entry<ChannelOption<?>, Object>[] optionsArray;
@@ -56,6 +60,7 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
                           int localConnIdLength,
                           QuicTokenHandler tokenHandler,
                           QuicConnectionIdGenerator connectionIdAddressGenerator,
+                          QuicResetTokenGenerator resetTokenGenerator,
                           FlushStrategy flushStrategy,
                           Function<QuicChannel, ? extends QuicSslEngine> sslEngineProvider,
                           Executor sslTaskExecutor,
@@ -68,6 +73,7 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
         super(config, localConnIdLength, tokenHandler.maxTokenLength(), flushStrategy);
         this.tokenHandler = tokenHandler;
         this.connectionIdAddressGenerator = connectionIdAddressGenerator;
+        this.resetTokenGenerator = resetTokenGenerator;
         this.sslEngineProvider = sslEngineProvider;
         this.sslTaskExecutor = sslTaskExecutor;
         this.handler = handler;
@@ -79,8 +85,7 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
     }
 
     @Override
-    public void handlerAdded(ChannelHandlerContext ctx) {
-        super.handlerAdded(ctx);
+    protected void handlerAdded(ChannelHandlerContext ctx, int localConnIdLength) {
         connIdBuffer = Quiche.allocateNativeOrder(localConnIdLength);
         mintTokenBuffer = allocateNativeOrder(tokenHandler.maxTokenLength());
     }
@@ -97,9 +102,14 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
     }
 
     @Override
+    @Nullable
     protected QuicheQuicChannel quicPacketRead(ChannelHandlerContext ctx, InetSocketAddress sender,
                                                InetSocketAddress recipient, QuicPacketType type, int version,
-                                               ByteBuf scid, ByteBuf dcid, ByteBuf token) throws Exception {
+                                               ByteBuf scid, ByteBuf dcid, ByteBuf token,
+                                               ByteBuf senderSockaddrMemory, ByteBuf recipientSockaddrMemory,
+                                               Consumer<QuicheQuicChannel> freeTask, int localConnIdLength,
+                                               QuicheConfig config)
+            throws Exception {
         ByteBuffer dcidByteBuffer = dcid.internalNioBuffer(dcid.readerIndex(), dcid.readableBytes());
         QuicheQuicChannel channel = getChannel(dcidByteBuffer);
         if (channel == null && type == QuicPacketType.ZERO_RTT && connectionIdAddressGenerator.isIdempotent()) {
@@ -107,16 +117,22 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
             channel = getChannel(connectionIdAddressGenerator.newId(dcidByteBuffer, localConnIdLength));
         }
         if (channel == null) {
-            return handleServer(ctx, sender, recipient, type, version, scid, dcid, token);
+            return handleServer(ctx, sender, recipient, type, version, scid, dcid, token,
+                    senderSockaddrMemory, recipientSockaddrMemory, freeTask, localConnIdLength, config);
         }
 
         return channel;
     }
 
+    @Nullable
     private QuicheQuicChannel handleServer(ChannelHandlerContext ctx, InetSocketAddress sender,
                                            InetSocketAddress recipient,
-                                 @SuppressWarnings("unused") QuicPacketType type, int version,
-                                 ByteBuf scid, ByteBuf dcid, ByteBuf token) throws Exception {
+                                           @SuppressWarnings("unused") QuicPacketType type, int version,
+                                           ByteBuf scid, ByteBuf dcid, ByteBuf token,
+                                           ByteBuf senderSockaddrMemory, ByteBuf recipientSockaddrMemory,
+                                           Consumer<QuicheQuicChannel> freeTask, int localConnIdLength,
+                                           QuicheConfig config)
+            throws Exception {
         if (!Quiche.quiche_version_is_supported(version)) {
             // Version is not supported, try to negotiate it.
             ByteBuf out = ctx.alloc().directBuffer(Quic.MAX_DATAGRAM_SIZE);
@@ -128,7 +144,9 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
                     Quiche.writerMemoryAddress(out), out.writableBytes());
             if (res < 0) {
                 out.release();
-                Quiche.throwIfError(res);
+                if (res != Quiche.QUICHE_ERR_DONE) {
+                    throw Quiche.convertToException(res);
+                }
             } else {
                 ctx.writeAndFlush(new DatagramPacket(out.writerIndex(outWriterIndex + res), sender));
             }
@@ -160,7 +178,9 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
 
                 if (written < 0) {
                     out.release();
-                    Quiche.throwIfError(written);
+                    if (written != Quiche.QUICHE_ERR_DONE) {
+                        throw Quiche.convertToException(written);
+                    }
                 } else {
                     ctx.writeAndFlush(new DatagramPacket(out.writerIndex(outWriterIndex + written), sender));
                 }
@@ -210,7 +230,8 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
         }
         QuicheQuicChannel channel = QuicheQuicChannel.forServer(
                 ctx.channel(), key, recipient, sender, config.isDatagramSupported(),
-                streamHandler, streamOptionsArray, streamAttrsArray, this::removeChannel, sslTaskExecutor);
+                streamHandler, streamOptionsArray, streamAttrsArray, freeTask, sslTaskExecutor,
+                connectionIdAddressGenerator, resetTokenGenerator);
 
         Quic.setupChannel(channel, optionsArray, attrsArray, handler, LOGGER);
         QuicSslEngine engine = sslEngineProvider.apply(channel);
@@ -244,9 +265,17 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
 
         channel.attachQuicheConnection(connection);
 
-        putChannel(channel);
+        addChannel(channel);
+
         ctx.channel().eventLoop().register(channel);
-        channel.pipeline().fireUserEventTriggered(new QuicConnectionEvent(null, sender));
         return channel;
+    }
+
+    @Override
+    protected void connectQuicChannel(QuicheQuicChannel channel, SocketAddress remoteAddress,
+                                      SocketAddress localAddress, ByteBuf senderSockaddrMemory,
+                                      ByteBuf recipientSockaddrMemory, Consumer<QuicheQuicChannel> freeTask,
+                                      int localConnIdLength, QuicheConfig config, ChannelPromise promise) {
+        promise.setFailure(new UnsupportedOperationException());
     }
 }

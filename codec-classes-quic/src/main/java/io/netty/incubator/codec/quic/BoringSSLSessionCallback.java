@@ -18,6 +18,7 @@ package io.netty.incubator.codec.quic;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -30,13 +31,13 @@ final class BoringSSLSessionCallback {
     private final QuicClientSessionCache sessionCache;
     private final QuicheQuicSslEngineMap engineMap;
 
-    BoringSSLSessionCallback(QuicheQuicSslEngineMap engineMap, QuicClientSessionCache sessionCache) {
+    BoringSSLSessionCallback(QuicheQuicSslEngineMap engineMap, @Nullable QuicClientSessionCache sessionCache) {
         this.engineMap = engineMap;
         this.sessionCache = sessionCache;
     }
 
     @SuppressWarnings("unused")
-    void newSession(long ssl, long creationTime, long timeout, byte[] session, boolean isSingleUse, byte[] peerParams) {
+    void newSession(long ssl, long creationTime, long timeout, byte[] session, boolean isSingleUse, byte @Nullable [] peerParams) {
         if (sessionCache == null) {
             return;
         }
@@ -65,7 +66,7 @@ final class BoringSSLSessionCallback {
     }
 
     // Mimic the encoding of quiche: https://github.com/cloudflare/quiche/blob/0.10.0/src/lib.rs#L1668
-    private static byte[] toQuicheQuicSession(byte[] sslSession, byte[] peerParams) {
+    private static byte @Nullable [] toQuicheQuicSession(byte @Nullable [] sslSession, byte @Nullable [] peerParams) {
         if (sslSession != null && peerParams != null) {
             try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
                  DataOutputStream dos = new DataOutputStream(bos)) {

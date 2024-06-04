@@ -19,6 +19,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelOption;
 import io.netty.util.AttributeKey;
 import io.netty.util.internal.ObjectUtil;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -41,6 +42,7 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
     private ChannelHandler streamHandler;
     private QuicConnectionIdGenerator connectionIdAddressGenerator;
     private QuicTokenHandler tokenHandler;
+    private QuicResetTokenGenerator resetTokenGenerator;
 
     /**
      * Creates a new instance.
@@ -59,6 +61,7 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
         streamHandler = builder.streamHandler;
         connectionIdAddressGenerator = builder.connectionIdAddressGenerator;
         tokenHandler = builder.tokenHandler;
+        resetTokenGenerator = builder.resetTokenGenerator;
     }
 
     @Override
@@ -75,7 +78,7 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
      * @param <T>       the type of the value.
      * @return          this instance.
      */
-    public <T> QuicServerCodecBuilder option(ChannelOption<T> option, T value) {
+    public <T> QuicServerCodecBuilder option(ChannelOption<T> option, @Nullable T value) {
         Quic.updateOptions(options, option, value);
         return self();
     }
@@ -89,7 +92,7 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
      * @param <T>       the type of the value.
      * @return          this instance.
      */
-    public <T> QuicServerCodecBuilder attr(AttributeKey<T> key, T value) {
+    public <T> QuicServerCodecBuilder attr(AttributeKey<T> key, @Nullable T value) {
         Quic.updateAttributes(attrs, key, value);
         return self();
     }
@@ -116,7 +119,7 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
      * @param <T>       the type of the value.
      * @return          this instance.
      */
-    public <T> QuicServerCodecBuilder streamOption(ChannelOption<T> option, T value) {
+    public <T> QuicServerCodecBuilder streamOption(ChannelOption<T> option, @Nullable T value) {
         Quic.updateOptions(streamOptions, option, value);
         return self();
     }
@@ -130,7 +133,7 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
      * @param <T>       the type of the value.
      * @return          this instance.
      */
-    public <T> QuicServerCodecBuilder streamAttr(AttributeKey<T> key, T value) {
+    public <T> QuicServerCodecBuilder streamAttr(AttributeKey<T> key, @Nullable T value) {
         Quic.updateAttributes(streamAttrs, key, value);
         return self();
     }
@@ -167,8 +170,20 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
      * @param tokenHandler  the {@link QuicTokenHandler} to use.
      * @return              this instance.
      */
-    public QuicServerCodecBuilder tokenHandler(QuicTokenHandler tokenHandler) {
+    public QuicServerCodecBuilder tokenHandler(@Nullable QuicTokenHandler tokenHandler) {
         this.tokenHandler = tokenHandler;
+        return self();
+    }
+
+    /**
+     * Set the {@link QuicResetTokenGenerator} that is used to generate stateless reset tokens or
+     * {@code null} if the default should be used.
+     *
+     * @param resetTokenGenerator  the {@link QuicResetTokenGenerator} to use.
+     * @return                     this instance.
+     */
+    public QuicServerCodecBuilder resetTokenGenerator(@Nullable QuicResetTokenGenerator resetTokenGenerator) {
+        this.resetTokenGenerator = resetTokenGenerator;
         return self();
     }
 
@@ -181,7 +196,7 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
     }
 
     @Override
-    protected ChannelHandler build(QuicheConfig config,
+    ChannelHandler build(QuicheConfig config,
                                    Function<QuicChannel, ? extends QuicSslEngine> sslEngineProvider,
                                    Executor sslTaskExecutor,
                                    int localConnIdLength, FlushStrategy flushStrategy) {
@@ -194,10 +209,14 @@ public final class QuicServerCodecBuilder extends QuicCodecBuilder<QuicServerCod
         if (generator == null) {
             generator = QuicConnectionIdGenerator.signGenerator();
         }
+        QuicResetTokenGenerator resetTokenGenerator = this.resetTokenGenerator;
+        if (resetTokenGenerator == null) {
+            resetTokenGenerator = QuicResetTokenGenerator.signGenerator();
+        }
         ChannelHandler handler = this.handler;
         ChannelHandler streamHandler = this.streamHandler;
-        return new QuicheQuicServerCodec(config, localConnIdLength, tokenHandler, generator, flushStrategy,
-                sslEngineProvider, sslTaskExecutor, handler,
+        return new QuicheQuicServerCodec(config, localConnIdLength, tokenHandler, generator, resetTokenGenerator,
+                flushStrategy, sslEngineProvider, sslTaskExecutor, handler,
                 Quic.toOptionsArray(options), Quic.toAttributesArray(attrs),
                 streamHandler, Quic.toOptionsArray(streamOptions), Quic.toAttributesArray(streamAttrs));
     }

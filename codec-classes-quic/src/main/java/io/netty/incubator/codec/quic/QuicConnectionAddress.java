@@ -18,6 +18,7 @@ package io.netty.incubator.codec.quic;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
+import io.netty.util.internal.EmptyArrays;
 
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
@@ -28,6 +29,8 @@ import java.util.Objects;
  */
 public final class QuicConnectionAddress extends SocketAddress {
 
+    static final QuicConnectionAddress NULL_LEN = new QuicConnectionAddress(EmptyArrays.EMPTY_BYTES);
+
     /**
      * Special {@link QuicConnectionAddress} that should be used when the connection address should be generated
      * and chosen on the fly.
@@ -36,8 +39,7 @@ public final class QuicConnectionAddress extends SocketAddress {
 
     private final String toStr;
 
-    // Accessed by QuicheQuicheChannel
-    final ByteBuffer connId;
+    private final ByteBuffer connId;
 
     /**
      * Create a new instance
@@ -54,7 +56,7 @@ public final class QuicConnectionAddress extends SocketAddress {
      * @param connId the connection id to use.
      */
     public QuicConnectionAddress(ByteBuffer connId) {
-        this(connId, true);
+        this(connId.duplicate(), true);
     }
 
     private QuicConnectionAddress(ByteBuffer connId, boolean validate) {
@@ -63,10 +65,11 @@ public final class QuicConnectionAddress extends SocketAddress {
             throw new IllegalArgumentException("Connection ID can only be of max length "
                     + Quiche.QUICHE_MAX_CONN_ID_LEN);
         }
-        this.connId = connId;
         if (connId == null) {
+            this.connId = null;
             toStr = "QuicConnectionAddress{EPHEMERAL}";
         } else {
+            this.connId = connId.asReadOnlyBuffer().duplicate();
             ByteBuf buffer = Unpooled.wrappedBuffer(connId);
             try {
                 toStr = "QuicConnectionAddress{" +
@@ -99,10 +102,14 @@ public final class QuicConnectionAddress extends SocketAddress {
         if (obj == this) {
             return true;
         }
-        if (connId == null) {
-            return false;
-        }
         return connId.equals(address.connId);
+    }
+
+    ByteBuffer id() {
+        if (connId == null) {
+            return ByteBuffer.allocate(0);
+        }
+        return connId.duplicate();
     }
 
     /**
@@ -125,5 +132,4 @@ public final class QuicConnectionAddress extends SocketAddress {
     public static QuicConnectionAddress random() {
         return random(Quiche.QUICHE_MAX_CONN_ID_LEN);
     }
-
 }

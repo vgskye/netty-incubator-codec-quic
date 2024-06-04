@@ -47,16 +47,28 @@
 #define QUICHE_CLASSNAME "io/netty/incubator/codec/quic/Quiche"
 #define LIBRARYNAME "netty_quiche"
 
-static jclass    quiche_logger_class = NULL;
+static jweak    quiche_logger_class_weak = NULL;
 static jmethodID quiche_logger_class_log = NULL;
 static jobject   quiche_logger = NULL;
 static JavaVM     *global_vm = NULL;
 
 static jclass integer_class = NULL;
-static jmethodID integer_class_init = NULL;
+static jmethodID integer_class_valueof = NULL;
 
 static jclass boolean_class = NULL;
 static jmethodID boolean_class_valueof = NULL;
+
+static jclass long_class = NULL;
+static jmethodID long_class_valueof = NULL;
+
+static jclass inet4address_class = NULL;
+static jmethodID inet4address_class_get_by_address = NULL;
+
+static jclass inet6address_class = NULL;
+static jmethodID inet6address_class_get_by_address = NULL;
+
+static jclass inetsocketaddress_class = NULL;
+static jmethodID inetsocketaddress_class_constructor = NULL;
 
 static jclass object_class = NULL;
 
@@ -292,6 +304,10 @@ static jint netty_quiche_err_key_update(JNIEnv* env, jclass clazz) {
     return QUICHE_ERR_KEY_UPDATE;
 }
 
+static jint netty_quiche_err_crypto_buffer_exceeded(JNIEnv* env, jclass clazz) {
+    return QUICHE_ERR_CRYPTO_BUFFER_EXCEEDED;
+}
+
 static jint netty_quiche_cc_reno(JNIEnv* env, jclass clazz) {
     return QUICHE_CC_RENO;
 }
@@ -302,6 +318,30 @@ static jint netty_quiche_cc_cubic(JNIEnv* env, jclass clazz) {
 
 static jint netty_quiche_cc_bbr(JNIEnv* env, jclass clazz) {
     return QUICHE_CC_BBR;
+}
+
+static jint netty_quiche_path_event_type_new(JNIEnv* env, jclass clazz) {
+    return QUICHE_PATH_EVENT_NEW;
+}
+
+static jint netty_quiche_path_event_type_validated(JNIEnv* env, jclass clazz) {
+    return QUICHE_PATH_EVENT_VALIDATED;
+}
+
+static jint netty_quiche_path_event_type_failed_validation(JNIEnv* env, jclass clazz) {
+    return QUICHE_PATH_EVENT_FAILED_VALIDATION;
+}
+
+static jint netty_quiche_path_event_type_closed(JNIEnv* env, jclass clazz) {
+    return QUICHE_PATH_EVENT_CLOSED;
+}
+
+static jint netty_quiche_path_event_type_reused_source_connection_id(JNIEnv* env, jclass clazz) {
+    return QUICHE_PATH_EVENT_REUSED_SOURCE_CONNECTION_ID;
+}
+
+static jint netty_quiche_path_event_type_peer_migrated(JNIEnv* env, jclass clazz) {
+    return QUICHE_PATH_EVENT_PEER_MIGRATED;
 }
 
 static jstring netty_quiche_version(JNIEnv* env, jclass clazz) {
@@ -359,8 +399,8 @@ static jlong netty_quiche_conn_new_with_tls(JNIEnv* env, jclass clazz, jlong sci
     const struct sockaddr *peer_pointer = (const struct sockaddr*) peer;
     quiche_conn *conn = quiche_conn_new_with_tls((const uint8_t *) scid, (size_t) scid_len,
                                  odcid_pointer, (size_t) odcid_len,
-                                 local_pointer, (size_t) local_len,
-                                 peer_pointer, (size_t) peer_len,
+                                 local_pointer, (socklen_t) local_len,
+                                 peer_pointer, (socklen_t) peer_len,
                                  (quiche_config *) config, (void*) ssl, isServer == JNI_TRUE ? true : false);
     if (conn == NULL) {
         return -1;
@@ -381,7 +421,7 @@ static jbyteArray to_byte_array(JNIEnv* env, const uint8_t* bytes, size_t len) {
 }
 
 static jint netty_quiche_conn_send_quantum(JNIEnv* env, jclass clazz, jlong conn) {
-    return quiche_conn_send_quantum((quiche_conn *) conn);
+    return (jint) quiche_conn_send_quantum((quiche_conn *) conn);
 }
 
 static jbyteArray netty_quiche_conn_trace_id(JNIEnv* env, jclass clazz, jlong conn) {
@@ -434,7 +474,7 @@ static jobjectArray netty_quiche_conn_peer_error0(JNIEnv* env, jclass clazz, jlo
     if (peer_error) {
         jobjectArray array = (*env)->NewObjectArray(env, 3, object_class, NULL);
         (*env)->SetObjectArrayElement(env, array, 0, (*env)->CallStaticObjectMethod(env, boolean_class, boolean_class_valueof, is_app ? JNI_TRUE : JNI_FALSE));
-        (*env)->SetObjectArrayElement(env, array, 1, (*env)->NewObject(env, integer_class, integer_class_init, (jint) error_code));
+        (*env)->SetObjectArrayElement(env, array, 1, (*env)->CallStaticObjectMethod(env, integer_class, integer_class_valueof, (jint) error_code));
         (*env)->SetObjectArrayElement(env, array, 2, to_byte_array(env, reason, reason_len));
         return array;
     }
@@ -454,11 +494,13 @@ static jint netty_quiche_conn_stream_priority(JNIEnv* env, jclass clazz, jlong c
 }
 
 static jint netty_quiche_conn_stream_recv(JNIEnv* env, jclass clazz, jlong conn, jlong stream_id, jlong out, int buf_len, jlong finAddr) {
-    return (jint) quiche_conn_stream_recv((quiche_conn *) conn, (uint64_t) stream_id,  (uint8_t *) out, (size_t) buf_len, (bool *) finAddr);
+    uint64_t error_code;
+    return (jint) quiche_conn_stream_recv((quiche_conn *) conn, (uint64_t) stream_id,  (uint8_t *) out, (size_t) buf_len, (bool *) finAddr, &error_code);
 }
 
 static jint netty_quiche_conn_stream_send(JNIEnv* env, jclass clazz, jlong conn, jlong stream_id, jlong buf, int buf_len, jboolean fin) {
-    return (jint) quiche_conn_stream_send((quiche_conn *) conn, (uint64_t) stream_id,  (uint8_t *) buf, (size_t) buf_len, fin == JNI_TRUE ? true : false);
+    uint64_t error_code;
+    return (jint) quiche_conn_stream_send((quiche_conn *) conn, (uint64_t) stream_id,  (uint8_t *) buf, (size_t) buf_len, fin == JNI_TRUE ? true : false, &error_code);
 }
 
 static jint netty_quiche_conn_stream_shutdown(JNIEnv* env, jclass clazz, jlong conn, jlong stream_id, jint direction, jlong err) {
@@ -495,10 +537,10 @@ static jboolean netty_quiche_conn_is_timed_out(JNIEnv* env, jclass clazz, jlong 
 
 static jlongArray netty_quiche_conn_stats(JNIEnv* env, jclass clazz, jlong conn) {
     // See https://github.com/cloudflare/quiche/blob/master/quiche/include/quiche.h#L467
-    quiche_stats stats = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,true,0,0};
+    quiche_stats stats = {0,0,0,0,0,0,0,0,0};
     quiche_conn_stats((quiche_conn *) conn, &stats);
 
-    jlongArray statsArray = (*env)->NewLongArray(env, 22);
+    jlongArray statsArray = (*env)->NewLongArray(env, 9);
     if (statsArray == NULL) {
         // This will put an OOME on the stack
         return NULL;
@@ -512,24 +554,43 @@ static jlongArray netty_quiche_conn_stats(JNIEnv* env, jclass clazz, jlong conn)
         (jlong)stats.recv_bytes,
         (jlong)stats.lost_bytes,
         (jlong)stats.stream_retrans_bytes,
-        (jlong)stats.paths_count,
-        (jlong)stats.peer_max_idle_timeout,
-        (jlong)stats.peer_max_udp_payload_size,
-        (jlong)stats.peer_initial_max_data,
-        (jlong)stats.peer_initial_max_stream_data_bidi_local,
-        (jlong)stats.peer_initial_max_stream_data_bidi_remote,
-        (jlong)stats.peer_initial_max_stream_data_uni,
-        (jlong)stats.peer_initial_max_streams_bidi,
-        (jlong)stats.peer_initial_max_streams_uni,
-        (jlong)stats.peer_ack_delay_exponent,
-        (jlong)stats.peer_max_ack_delay,
-        stats.peer_disable_active_migration ? 1 : 0,
-        (jlong)stats.peer_active_conn_id_limit,
-        (jlong)stats.peer_max_datagram_frame_size,
+        (jlong)stats.paths_count
     };
-    (*env)->SetLongArrayRegion(env, statsArray, 0, 22, statsArrayElements);
+    (*env)->SetLongArrayRegion(env, statsArray, 0, 9, statsArrayElements);
     return statsArray;
 }
+
+static jlongArray netty_quiche_conn_peer_transport_params(JNIEnv* env, jclass clazz, jlong conn) {
+    // See https://github.com/cloudflare/quiche/blob/master/quiche/include/quiche.h#L563
+    quiche_transport_params params = {0,0,0,0,0,0,0,0,0,0,false,0,0};
+    if (!quiche_conn_peer_transport_params((quiche_conn *) conn, &params)) {
+        return NULL;
+    }
+
+    jlongArray paramsArray = (*env)->NewLongArray(env, 13);
+    if (paramsArray == NULL) {
+        // This will put an OOME on the stack
+        return NULL;
+    }
+    jlong paramsArrayElements[] = {
+        (jlong)params.peer_max_idle_timeout,
+        (jlong)params.peer_max_udp_payload_size,
+        (jlong)params.peer_initial_max_data,
+        (jlong)params.peer_initial_max_stream_data_bidi_local,
+        (jlong)params.peer_initial_max_stream_data_bidi_remote,
+        (jlong)params.peer_initial_max_stream_data_uni,
+        (jlong)params.peer_initial_max_streams_bidi,
+        (jlong)params.peer_initial_max_streams_uni,
+        (jlong)params.peer_ack_delay_exponent,
+        (jlong)params.peer_disable_active_migration ? 1: 0,
+        (jlong)params.peer_active_conn_id_limit,
+        (jlong)params.peer_max_datagram_frame_size
+    };
+    (*env)->SetLongArrayRegion(env, paramsArray, 0, 13, paramsArrayElements);
+    return paramsArray;
+}
+
+
 
 static jlong netty_quiche_conn_timeout_as_nanos(JNIEnv* env, jclass clazz, jlong conn) {
     return quiche_conn_timeout_as_nanos((quiche_conn *) conn);
@@ -603,6 +664,257 @@ static jint netty_quiche_conn_set_session(JNIEnv* env, jclass clazz, jlong conn,
 
 static jint netty_quiche_conn_max_send_udp_payload_size(JNIEnv* env, jclass clazz, jlong conn) {
     return (jint) quiche_conn_max_send_udp_payload_size((quiche_conn *) conn);
+}
+
+static jint netty_quiche_conn_scids_left(JNIEnv* env, jclass clazz, jlong conn) {
+    return (jint) quiche_conn_scids_left((quiche_conn *) conn);
+}
+
+static jlong netty_quiche_conn_new_scid(JNIEnv* env, jclass clazz, jlong conn, jlong scid, jint scid_len, jbyteArray reset_token, jboolean retire_if_needed, jlong sequenceAddr) {
+    uint8_t* buf = (uint8_t*) (*env)->GetByteArrayElements(env, reset_token, 0);
+
+    uint64_t* seq;
+    if (sequenceAddr < 0) {
+        uint64_t tmp;
+        seq = &tmp;
+    } else {
+        seq = (uint64_t *) sequenceAddr;
+    }
+    jlong ret = quiche_conn_new_scid((quiche_conn *) conn, (const uint8_t *) scid, scid_len, buf, retire_if_needed == JNI_TRUE ? true : false, seq);
+    (*env)->ReleaseByteArrayElements(env, reset_token, (jbyte*)buf, JNI_ABORT);
+    return ret;
+}
+
+static jbyteArray netty_quiche_conn_retired_scid_next(JNIEnv* env, jclass clazz, jlong conn) {
+    const uint8_t *id = NULL;
+    size_t len = 0;
+
+    if (quiche_conn_retired_scid_next((quiche_conn *) conn, &id, &len)) {
+        return to_byte_array(env, id, len);
+    }
+    return NULL;
+}
+
+static jlong netty_quiche_conn_path_event_next(JNIEnv* env, jclass clazz, jlong conn) {
+    const struct quiche_path_event *ev = quiche_conn_path_event_next((quiche_conn *) conn);
+    if (ev == NULL) {
+        return -1;
+    }
+    return (jlong) ev;
+}
+
+static jint netty_quiche_path_event_type(JNIEnv* env, jclass clazz, jlong ev) {
+    return (jint) quiche_path_event_type((quiche_path_event *) ev);
+}
+
+static jobject netty_new_socket_address(JNIEnv* env, const struct sockaddr_storage* addr) {
+    jobject address = NULL;
+    jint port;
+    if (addr->ss_family == AF_INET) {
+        struct sockaddr_in* s = (struct sockaddr_in*) addr;
+        port = ntohs(s->sin_port);
+        jbyteArray array = to_byte_array(env, (uint8_t*) &s->sin_addr.s_addr, (size_t) 4);
+        address = (*env)->CallStaticObjectMethod(env, inet4address_class, inet4address_class_get_by_address, array);
+    } else {
+        struct sockaddr_in6* s = (struct sockaddr_in6*) addr;
+        port = ntohs(s->sin6_port);
+        jbyteArray array = to_byte_array(env, (uint8_t*) &s->sin6_addr.s6_addr, (size_t) 16);
+        address = (*env)->CallStaticObjectMethod(env, inet6address_class, inet6address_class_get_by_address, NULL, array, (jint) s->sin6_scope_id);
+    }
+
+    return (*env)->NewObject(env, inetsocketaddress_class, inetsocketaddress_class_constructor, address, port);
+}
+
+static jobjectArray netty_quiche_conn_path_stats(JNIEnv* env, jclass clazz, jlong conn, jlong idx) {
+    quiche_path_stats stats = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+    if (quiche_conn_path_stats((quiche_conn *) conn, idx, &stats) != 0) {
+        // The idx is not valid. 
+        return NULL;
+    }
+
+    jobject localAddr = netty_new_socket_address(env, &stats.local_addr);
+    if (localAddr == NULL) {
+        return NULL;
+    }
+    jobject peerAddr = netty_new_socket_address(env, &stats.peer_addr);
+    if (peerAddr == NULL) {
+        return NULL;
+    }
+
+    jobjectArray array = (*env)->NewObjectArray(env, 16, object_class, NULL);
+    (*env)->SetObjectArrayElement(env, array, 0, localAddr);
+    (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
+    (*env)->SetObjectArrayElement(env, array, 2, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.validation_state));
+    (*env)->SetObjectArrayElement(env, array, 3, (*env)->CallStaticObjectMethod(env, boolean_class, boolean_class_valueof, stats.active ? JNI_TRUE : JNI_FALSE));
+    (*env)->SetObjectArrayElement(env, array, 4, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.recv));
+    (*env)->SetObjectArrayElement(env, array, 5, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.sent));
+    (*env)->SetObjectArrayElement(env, array, 6, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.lost));
+    (*env)->SetObjectArrayElement(env, array, 7, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.retrans));
+    (*env)->SetObjectArrayElement(env, array, 8, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.rtt));
+    (*env)->SetObjectArrayElement(env, array, 9, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.cwnd));
+    (*env)->SetObjectArrayElement(env, array, 10, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.sent_bytes));
+    (*env)->SetObjectArrayElement(env, array, 11, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.recv_bytes));
+    (*env)->SetObjectArrayElement(env, array, 12, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.lost_bytes));
+    (*env)->SetObjectArrayElement(env, array, 13, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.stream_retrans_bytes));
+    (*env)->SetObjectArrayElement(env, array, 14, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.pmtu));
+    (*env)->SetObjectArrayElement(env, array, 15, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.delivery_rate));
+    return array;
+}
+
+static jobjectArray netty_quiche_path_event_new(JNIEnv* env, jclass clazz, jlong ev) {
+    struct sockaddr_storage local;
+    socklen_t local_len;
+    struct sockaddr_storage peer;
+    socklen_t peer_len;
+
+    quiche_path_event_new((quiche_path_event *) ev, &local, &local_len, &peer, &peer_len);
+
+    jobject localAddr = netty_new_socket_address(env, &local);
+    if (localAddr == NULL) {
+        return NULL;
+    }
+    jobject peerAddr = netty_new_socket_address(env, &peer);
+    if (peerAddr == NULL) {
+        return NULL;
+    }
+
+    jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    (*env)->SetObjectArrayElement(env, array, 0, localAddr);
+    (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
+    return array;
+}
+
+static jobjectArray netty_quiche_path_event_validated(JNIEnv* env, jclass clazz, jlong ev) {
+    struct sockaddr_storage local;
+    socklen_t local_len;
+    struct sockaddr_storage peer;
+    socklen_t peer_len;
+
+    quiche_path_event_validated((quiche_path_event *) ev, &local, &local_len, &peer, &peer_len);
+
+    jobject localAddr = netty_new_socket_address(env, &local);
+    if (localAddr == NULL) {
+        return NULL;
+    }
+    jobject peerAddr = netty_new_socket_address(env, &peer);
+    if (peerAddr == NULL) {
+        return NULL;
+    }
+
+    jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    (*env)->SetObjectArrayElement(env, array, 0, localAddr);
+    (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
+    return array;
+}
+
+static jobjectArray netty_quiche_path_event_failed_validation(JNIEnv* env, jclass clazz, jlong ev) {
+    struct sockaddr_storage local;
+    socklen_t local_len;
+    struct sockaddr_storage peer;
+    socklen_t peer_len;
+
+    quiche_path_event_failed_validation((quiche_path_event *) ev, &local, &local_len, &peer, &peer_len);
+
+    jobject localAddr = netty_new_socket_address(env, &local);
+    if (localAddr == NULL) {
+        return NULL;
+    }
+    jobject peerAddr = netty_new_socket_address(env, &peer);
+    if (peerAddr == NULL) {
+        return NULL;
+    }
+
+    jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    (*env)->SetObjectArrayElement(env, array, 0, localAddr);
+    (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
+    return array;
+}
+
+static jobjectArray netty_quiche_path_event_closed(JNIEnv* env, jclass clazz, jlong ev) {
+    struct sockaddr_storage local;
+    socklen_t local_len;
+    struct sockaddr_storage peer;
+    socklen_t peer_len;
+
+    quiche_path_event_closed((quiche_path_event *) ev, &local, &local_len, &peer, &peer_len);
+
+    jobject localAddr = netty_new_socket_address(env, &local);
+    if (localAddr == NULL) {
+        return NULL;
+    }
+    jobject peerAddr = netty_new_socket_address(env, &peer);
+    if (peerAddr == NULL) {
+        return NULL;
+    }
+
+    jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    (*env)->SetObjectArrayElement(env, array, 0, localAddr);
+    (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
+    return array;
+}
+
+static jobjectArray netty_quiche_path_event_reused_source_connection_id(JNIEnv* env, jclass clazz, jlong ev) {
+    uint64_t id;
+    struct sockaddr_storage local_old;
+    socklen_t local_old_len;
+    struct sockaddr_storage peer_old;
+    socklen_t peer_old_len;
+    struct sockaddr_storage local;
+    socklen_t local_len;
+    struct sockaddr_storage peer;
+    socklen_t peer_len;
+
+    quiche_path_event_reused_source_connection_id((quiche_path_event *) ev, &id, &local_old, &local_old_len, &peer_old, &peer_old_len, &local, &local_len, &peer, &peer_len);
+
+    jobject localOldAddr = netty_new_socket_address(env, &local_old);
+    if (localOldAddr == NULL) {
+        return NULL;
+    }
+    jobject peerOldAddr = netty_new_socket_address(env, &peer_old);
+    if (peerOldAddr == NULL) {
+        return NULL;
+    }
+    jobject localAddr = netty_new_socket_address(env, &local);
+    if (localAddr == NULL) {
+        return NULL;
+    }
+    jobject peerAddr = netty_new_socket_address(env, &peer);
+    if (peerAddr == NULL) {
+        return NULL;
+    }
+    jobjectArray array = (*env)->NewObjectArray(env, 5, object_class, NULL);
+    (*env)->SetObjectArrayElement(env, array, 0, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) id));
+    (*env)->SetObjectArrayElement(env, array, 1, localOldAddr);
+    (*env)->SetObjectArrayElement(env, array, 2, peerOldAddr);
+    (*env)->SetObjectArrayElement(env, array, 3, localAddr);
+    (*env)->SetObjectArrayElement(env, array, 4, peerAddr);
+    return array;
+}
+
+static jobjectArray netty_quiche_path_event_peer_migrated(JNIEnv* env, jclass clazz, jlong ev) {
+    struct sockaddr_storage local;
+    socklen_t local_len;
+    struct sockaddr_storage peer;
+    socklen_t peer_len;
+    quiche_path_event_peer_migrated((quiche_path_event *) ev, &local, &local_len, &peer, &peer_len);
+
+    jobject localAddr = netty_new_socket_address(env, &local);
+    if (localAddr == NULL) {
+        return NULL;
+    }
+    jobject peerAddr = netty_new_socket_address(env, &peer);
+    if (peerAddr == NULL) {
+        return NULL;
+    }
+
+    jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    (*env)->SetObjectArrayElement(env, array, 0, localAddr);
+    (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
+    return array;
+}
+
+static void netty_quiche_path_event_free(JNIEnv* env, jclass clazz, jlong ev) {
+    quiche_path_event_free((quiche_path_event *) ev);
 }
 
 static jlong netty_quiche_config_new(JNIEnv* env, jclass clazz, jint version) {
@@ -816,9 +1128,16 @@ static const JNINativeMethod statically_referenced_fixed_method_table[] = {
   { "quiche_err_id_limit", "()I", (void *) netty_quiche_err_id_limit },
   { "quiche_err_out_of_identifiers", "()I", (void *) netty_quiche_err_out_of_identifiers },
   { "quiche_err_key_update", "()I", (void *) netty_quiche_err_key_update },
+  { "quiche_err_crypto_buffer_exceeded", "()I", (void *) netty_quiche_err_crypto_buffer_exceeded },
   { "quiche_cc_reno", "()I", (void *) netty_quiche_cc_reno },
   { "quiche_cc_cubic", "()I", (void *) netty_quiche_cc_cubic },
-  { "quiche_cc_bbr", "()I", (void *) netty_quiche_cc_bbr }
+  { "quiche_cc_bbr", "()I", (void *) netty_quiche_cc_bbr },
+  { "quiche_path_event_new", "()I", (void *) netty_quiche_path_event_type_new },
+  { "quiche_path_event_validated", "()I", (void *) netty_quiche_path_event_type_validated },
+  { "quiche_path_event_failed_validation", "()I", (void *) netty_quiche_path_event_type_failed_validation },
+  { "quiche_path_event_closed", "()I", (void *) netty_quiche_path_event_type_closed },
+  { "quiche_path_event_reused_source_connection_id", "()I", (void *) netty_quiche_path_event_type_reused_source_connection_id },
+  { "quiche_path_event_peer_migrated", "()I", (void *) netty_quiche_path_event_type_peer_migrated }
 };
 
 static const jint statically_referenced_fixed_method_table_size = sizeof(statically_referenced_fixed_method_table) / sizeof(statically_referenced_fixed_method_table[0]);
@@ -852,6 +1171,7 @@ static const JNINativeMethod fixed_method_table[] = {
   { "quiche_conn_is_closed", "(J)Z", (void *) netty_quiche_conn_is_closed },
   { "quiche_conn_is_timed_out", "(J)Z", (void *) netty_quiche_conn_is_timed_out },
   { "quiche_conn_stats", "(J)[J", (void *) netty_quiche_conn_stats },
+  { "quiche_conn_peer_transport_params", "(J)[J", (void *) netty_quiche_conn_peer_transport_params },
   { "quiche_conn_timeout_as_nanos", "(J)J", (void *) netty_quiche_conn_timeout_as_nanos },
   { "quiche_conn_on_timeout", "(J)V", (void *) netty_quiche_conn_on_timeout },
   { "quiche_conn_readable", "(J)J", (void *) netty_quiche_conn_readable },
@@ -864,6 +1184,9 @@ static const JNINativeMethod fixed_method_table[] = {
   { "quiche_conn_dgram_send", "(JJI)I", (void* ) netty_quiche_conn_dgram_send },
   { "quiche_conn_set_session", "(J[B)I", (void* ) netty_quiche_conn_set_session },
   { "quiche_conn_max_send_udp_payload_size", "(J)I", (void* ) netty_quiche_conn_max_send_udp_payload_size },
+  { "quiche_conn_scids_left", "(J)I", (void* ) netty_quiche_conn_scids_left },
+  { "quiche_conn_new_scid", "(JJI[BZJ)J", (void* ) netty_quiche_conn_new_scid },
+  { "quiche_conn_retired_scid_next", "(J)[B", (void* ) netty_quiche_conn_retired_scid_next },
   { "quiche_config_new", "(I)J", (void *) netty_quiche_config_new },
   { "quiche_config_enable_dgram", "(JZII)V", (void *) netty_quiche_config_enable_dgram },
   { "quiche_config_grease", "(JZ)V", (void *) netty_quiche_config_grease },
@@ -885,7 +1208,17 @@ static const JNINativeMethod fixed_method_table[] = {
   { "quiche_config_set_stateless_reset_token", "(J[B)V", (void *) netty_quiche_config_set_stateless_reset_token },
   { "quiche_config_free", "(J)V", (void *) netty_quiche_config_free },
   { "buffer_memory_address", "(Ljava/nio/ByteBuffer;)J", (void *) netty_buffer_memory_address},
-  { "sockaddr_cmp", "(JJ)I", (void *) netty_sockaddr_cmp}
+  { "sockaddr_cmp", "(JJ)I", (void *) netty_sockaddr_cmp},
+  { "quiche_conn_path_event_next", "(J)J", (void *) netty_quiche_conn_path_event_next },
+  { "quiche_path_event_type", "(J)I", (void *) netty_quiche_path_event_type },
+  { "quiche_conn_path_stats", "(JJ)[Ljava/lang/Object;", (void *) netty_quiche_conn_path_stats },
+  { "quiche_path_event_new", "(J)[Ljava/lang/Object;", (void *) netty_quiche_path_event_new },
+  { "quiche_path_event_validated", "(J)[Ljava/lang/Object;", (void *) netty_quiche_path_event_validated },
+  { "quiche_path_event_failed_validation", "(J)[Ljava/lang/Object;", (void *) netty_quiche_path_event_failed_validation },
+  { "quiche_path_event_closed", "(J)[Ljava/lang/Object;", (void *) netty_quiche_path_event_closed },
+  { "quiche_path_event_reused_source_connection_id", "(J)[Ljava/lang/Object;", (void *) netty_quiche_path_event_reused_source_connection_id },
+  { "quiche_path_event_peer_migrated", "(J)[Ljava/lang/Object;", (void *) netty_quiche_path_event_peer_migrated },
+  { "quiche_path_event_free", "(J)V", (void *) netty_quiche_path_event_free }
 };
 
 static const jint fixed_method_table_size = sizeof(fixed_method_table) / sizeof(fixed_method_table[0]);
@@ -927,6 +1260,7 @@ static jint netty_quiche_JNI_OnLoad(JNIEnv* env, char const* packagePrefix) {
     int nativeRegistered = 0;
     int boringsslLoaded = 0;
 
+    jclass quiche_logger_class = NULL;
     char* name = NULL;
 
     // We must register the statically referenced methods first!
@@ -953,17 +1287,37 @@ static jint netty_quiche_JNI_OnLoad(JNIEnv* env, char const* packagePrefix) {
     nativeRegistered = 1;
 
     NETTY_JNI_UTIL_LOAD_CLASS(env, integer_class, "java/lang/Integer", done);
-    NETTY_JNI_UTIL_GET_METHOD(env, integer_class, integer_class_init, "<init>", "(I)V", done);
-
+    if ((integer_class_valueof = (*env)->GetStaticMethodID(env, integer_class, "valueOf", "(I)Ljava/lang/Integer;")) == NULL) {
+        goto done;
+    }
     NETTY_JNI_UTIL_LOAD_CLASS(env, boolean_class, "java/lang/Boolean", done);
     if ((boolean_class_valueof = (*env)->GetStaticMethodID(env, boolean_class, "valueOf", "(Z)Ljava/lang/Boolean;")) == NULL) {
         goto done;
     }
 
+    NETTY_JNI_UTIL_LOAD_CLASS(env, long_class, "java/lang/Long", done);
+    if ((long_class_valueof = (*env)->GetStaticMethodID(env, long_class, "valueOf", "(J)Ljava/lang/Long;")) == NULL) {
+        goto done;
+    }
+
+    NETTY_JNI_UTIL_LOAD_CLASS(env, inet4address_class, "java/net/Inet4Address", done);
+    if ((inet4address_class_get_by_address = (*env)->GetStaticMethodID(env, inet4address_class, "getByAddress", "([B)Ljava/net/InetAddress;")) == NULL) {
+        goto done;
+    }
+
+    NETTY_JNI_UTIL_LOAD_CLASS(env, inet6address_class, "java/net/Inet6Address", done);
+    if ((inet6address_class_get_by_address = (*env)->GetStaticMethodID(env, inet6address_class, "getByAddress", "(Ljava/lang/String;[BI)Ljava/net/Inet6Address;")) == NULL) {
+        goto done;
+    }
+
+    NETTY_JNI_UTIL_LOAD_CLASS(env, inetsocketaddress_class, "java/net/InetSocketAddress", done);
+    NETTY_JNI_UTIL_GET_METHOD(env, inetsocketaddress_class, inetsocketaddress_class_constructor, "<init>", "(Ljava/net/InetAddress;I)V", done);
+
     NETTY_JNI_UTIL_LOAD_CLASS(env, object_class, "java/lang/Object", done);
 
     NETTY_JNI_UTIL_PREPEND(packagePrefix, "io/netty/incubator/codec/quic/QuicheLogger", name, done);
-    NETTY_JNI_UTIL_LOAD_CLASS(env, quiche_logger_class, name, done);
+    NETTY_JNI_UTIL_LOAD_CLASS_WEAK(env, quiche_logger_class_weak, name, done);
+    NETTY_JNI_UTIL_NEW_LOCAL_FROM_WEAK(env, quiche_logger_class, quiche_logger_class_weak, done);
     NETTY_JNI_UTIL_GET_METHOD(env, quiche_logger_class, quiche_logger_class_log, "log", "(Ljava/lang/String;)V", done);
     // Initialize this module
 
@@ -988,22 +1342,31 @@ done:
             netty_boringssl_JNI_OnUnload(env, packagePrefix);
         }
 
-        NETTY_JNI_UTIL_UNLOAD_CLASS(env, quiche_logger_class);
+        NETTY_JNI_UTIL_UNLOAD_CLASS_WEAK(env, quiche_logger_class_weak);
         NETTY_JNI_UTIL_UNLOAD_CLASS(env, integer_class);
         NETTY_JNI_UTIL_UNLOAD_CLASS(env, boolean_class);
+        NETTY_JNI_UTIL_UNLOAD_CLASS(env, long_class);
+        NETTY_JNI_UTIL_UNLOAD_CLASS(env, inet4address_class);
+        NETTY_JNI_UTIL_UNLOAD_CLASS(env, inet6address_class);
+        NETTY_JNI_UTIL_UNLOAD_CLASS(env, inetsocketaddress_class);
         NETTY_JNI_UTIL_UNLOAD_CLASS(env, object_class);
 
         netty_jni_util_free_dynamic_methods_table(dynamicMethods, fixed_method_table_size, dynamicMethodsTableSize());
     }
+    NETTY_JNI_UTIL_DELETE_LOCAL(env, quiche_logger_class);
     return ret;
 }
 
 static void netty_quiche_JNI_OnUnload(JNIEnv* env) {
     netty_boringssl_JNI_OnUnload(env, staticPackagePrefix);
 
-    NETTY_JNI_UTIL_UNLOAD_CLASS(env, quiche_logger_class);
+    NETTY_JNI_UTIL_UNLOAD_CLASS_WEAK(env, quiche_logger_class_weak);
     NETTY_JNI_UTIL_UNLOAD_CLASS(env, integer_class);
     NETTY_JNI_UTIL_UNLOAD_CLASS(env, boolean_class);
+    NETTY_JNI_UTIL_UNLOAD_CLASS(env, long_class);
+    NETTY_JNI_UTIL_UNLOAD_CLASS(env, inet4address_class);
+    NETTY_JNI_UTIL_UNLOAD_CLASS(env, inet6address_class);
+    NETTY_JNI_UTIL_UNLOAD_CLASS(env, inetsocketaddress_class);
     NETTY_JNI_UTIL_UNLOAD_CLASS(env, object_class);
 
     netty_jni_util_unregister_natives(env, staticPackagePrefix, STATICALLY_CLASSNAME);

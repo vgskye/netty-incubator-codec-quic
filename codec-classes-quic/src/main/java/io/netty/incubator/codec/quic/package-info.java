@@ -16,4 +16,6 @@
 /**
  * QUIC implementation
  */
+@NotNullByDefault
 package io.netty.incubator.codec.quic;
+

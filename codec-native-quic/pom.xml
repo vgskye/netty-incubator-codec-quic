@@ -19,11 +19,11 @@
   <parent>
     <groupId>io.netty.incubator</groupId>
     <artifactId>netty-incubator-codec-parent-quic</artifactId>
-    <version>0.0.49.Final</version>
+    <version>0.0.63.Final</version>
   </parent>
 
   <artifactId>netty-incubator-codec-native-quic</artifactId>
-  <version>0.0.49.Final</version>
+  <version>0.0.63.Final</version>
   <name>Netty/Incubator/Codec/Native/Quic</name>
   <packaging>${packaging.type}</packaging>
 
@@ -47,7 +47,7 @@
     <boringsslRepository>https://boringssl.googlesource.com/boringssl</boringsslRepository>
     <!-- Lets use what we use in netty-tcnative-boringssl-static -->
     <boringsslBranch>chromium-stable</boringsslBranch>
-    <boringsslCommitSha>ca1690e221677cea3fb946f324eb89d846ec53f2</boringsslCommitSha>
+    <boringsslCommitSha>1b7fdbd9101dedc3e0aa3fcf4ff74eacddb34ecc</boringsslCommitSha>
 
     <quicheSourceDir>${project.build.directory}/quiche-source</quicheSourceDir>
     <quicheBuildDir>${quicheSourceDir}/target/release</quicheBuildDir>
@@ -56,7 +56,7 @@
     <quicheHomeIncludeDir>${quicheHomeDir}/quiche/include</quicheHomeIncludeDir>
     <quicheRepository>https://github.com/cloudflare/quiche</quicheRepository>
     <quicheBranch>master</quicheBranch>
-    <quicheCommitSha>34bc9205891f3d2d7324e236b8148a2cb0c1f1a1</quicheCommitSha>
+    <quicheCommitSha>a9b3954090488e940b673c18e1660d66b3ccf565</quicheCommitSha>
     <generatedSourcesDir>${project.build.directory}/generated-sources</generatedSourcesDir>
     <templateDir>${project.build.directory}/template</templateDir>
     <cargoTarget />
@@ -116,9 +116,9 @@
         <!-- On *nix, add ASM flags to disable executable stack -->
         <cmakeAsmFlags>-Wa,--noexecstack -mmacosx-version-min=${macosxDeploymentTarget}</cmakeAsmFlags>
         <extraCflags>-mmacosx-version-min=${macosxDeploymentTarget}</extraCflags>
-        <cmakeCFlags>${extraCflags} -O3 -fno-omit-frame-pointer -DOPENSSL_C11_ATOMIC</cmakeCFlags>
+        <cmakeCFlags>${extraCflags} -O3 -fno-omit-frame-pointer</cmakeCFlags>
         <!-- We need to define __STDC_CONSTANT_MACROS and __STDC_FORMAT_MACROS when building boringssl on centos 6 -->
-        <cmakeCxxFlags>${extraCxxflags} -O3 -fno-omit-frame-pointer -DOPENSSL_C11_ATOMIC -Wno-error=range-loop-analysis</cmakeCxxFlags>
+        <cmakeCxxFlags>${extraCxxflags} -O3 -fno-omit-frame-pointer -Wno-error=range-loop-analysis</cmakeCxxFlags>
         <libssl>libssl.a</libssl>
         <libcrypto>libcrypto.a</libcrypto>
         <libquiche>libquiche.a</libquiche>
@@ -139,9 +139,9 @@
         <!-- On *nix, add ASM flags to disable executable stack -->
         <cmakeAsmFlags>-Wa,--noexecstack -target arm64-apple-macos11</cmakeAsmFlags>
         <extraCmakeFlags>-DCMAKE_SYSTEM_PROCESSOR=arm64 -DCMAKE_OSX_ARCHITECTURES=arm64</extraCmakeFlags>
-        <cmakeCFlags>${extraCflags} -O3 -fno-omit-frame-pointer  -DOPENSSL_C11_ATOMIC</cmakeCFlags>
+        <cmakeCFlags>${extraCflags} -O3 -fno-omit-frame-pointer</cmakeCFlags>
         <!-- We need to define __STDC_CONSTANT_MACROS and __STDC_FORMAT_MACROS when building boringssl on centos 6 -->
-        <cmakeCxxFlags>${extraCxxflags} -O3 -fno-omit-frame-pointer -DOPENSSL_C11_ATOMIC -Wno-error=range-loop-analysis</cmakeCxxFlags>
+        <cmakeCxxFlags>${extraCxxflags} -O3 -fno-omit-frame-pointer -Wno-error=range-loop-analysis</cmakeCxxFlags>
         <libssl>libssl.a</libssl>
         <libcrypto>libcrypto.a</libcrypto>
         <libquiche>libquiche.a</libquiche>
@@ -169,9 +169,9 @@
         <!-- On *nix, add ASM flags to disable executable stack -->
         <cmakeAsmFlags>-Wa,--noexecstack -target x86_64-apple-macos10.12 -mmacosx-version-min=${macosxDeploymentTarget}</cmakeAsmFlags>
         <extraCmakeFlags>-DCMAKE_SYSTEM_PROCESSOR=x86_64 -DCMAKE_OSX_ARCHITECTURES=x86_64</extraCmakeFlags>
-        <cmakeCFlags>${extraCflags} -O3 -fno-omit-frame-pointer  -DOPENSSL_C11_ATOMIC</cmakeCFlags>
+        <cmakeCFlags>${extraCflags} -O3 -fno-omit-frame-pointer</cmakeCFlags>
         <!-- We need to define __STDC_CONSTANT_MACROS and __STDC_FORMAT_MACROS when building boringssl on centos 6 -->
-        <cmakeCxxFlags>${extraCxxflags} -O3 -fno-omit-frame-pointer -DOPENSSL_C11_ATOMIC -Wno-error=range-loop-analysis</cmakeCxxFlags>
+        <cmakeCxxFlags>${extraCxxflags} -O3 -fno-omit-frame-pointer -Wno-error=range-loop-analysis</cmakeCxxFlags>
         <libssl>libssl.a</libssl>
         <libcrypto>libcrypto.a</libcrypto>
         <libquiche>libquiche.a</libquiche>
@@ -202,9 +202,9 @@
         <extraCxxflags>-O3 -fno-omit-frame-pointer</extraCxxflags>
         <!-- On *nix, add ASM flags to disable executable stack -->
         <cmakeAsmFlags>-Wa,--noexecstack</cmakeAsmFlags>
-        <cmakeCFlags>${extraCflags} -DOPENSSL_C11_ATOMIC</cmakeCFlags>
+        <cmakeCFlags>${extraCflags}</cmakeCFlags>
         <!-- We need to define __STDC_CONSTANT_MACROS and __STDC_FORMAT_MACROS when building boringssl on centos 6 -->
-        <cmakeCxxFlags>${extraCxxflags} -DOPENSSL_C11_ATOMIC -Wno-error=maybe-uninitialized -Wno-error=shadow -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS</cmakeCxxFlags>
+        <cmakeCxxFlags>${extraCxxflags} -Wno-error=maybe-uninitialized -Wno-error=shadow -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS</cmakeCxxFlags>
         <libssl>libssl.a</libssl>
         <libcrypto>libcrypto.a</libcrypto>
         <libquiche>libquiche.a</libquiche>
@@ -278,9 +278,9 @@
         <extraCxxflags>-O3 -fno-omit-frame-pointer</extraCxxflags>
         <!-- On *nix, add ASM flags to disable executable stack -->
         <cmakeAsmFlags>-Wa,--noexecstack</cmakeAsmFlags>
-        <cmakeCFlags>${extraCflags} -DOPENSSL_C11_ATOMIC</cmakeCFlags>
+        <cmakeCFlags>${extraCflags}</cmakeCFlags>
         <!-- We need to define __STDC_CONSTANT_MACROS and __STDC_FORMAT_MACROS when building boringssl on centos 6 -->
-        <cmakeCxxFlags>${extraCxxflags} -DOPENSSL_C11_ATOMIC -Wno-error=shadow -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS</cmakeCxxFlags>
+        <cmakeCxxFlags>${extraCxxflags} -Wno-error=shadow -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS</cmakeCxxFlags>
         <libssl>libssl.a</libssl>
         <libcrypto>libcrypto.a</libcrypto>
         <libquiche>libquiche.a</libquiche>
@@ -288,6 +288,7 @@
         <!-- https://developer.android.com/ndk/guides/other_build_systems -->
         <jniLibName>netty_quiche</jniLibName>
         <jni.classifier>${platform}</jni.classifier>
+        <javaModuleNameClassifier>android</javaModuleNameClassifier>
         <cflags>-std=c99 -Werror -fno-omit-frame-pointer -fvisibility=hidden -Wunused -Wno-unused-value -O3 -I${quicheHomeIncludeDir} -I${boringsslHomeIncludeDir}</cflags>
         <ldflags>-L${quicheHomeBuildDir} -lquiche -L${boringsslHomeBuildDir} -lssl -lcrypto</ldflags>
         <bundleNativeCode>META-INF/native/${jniLibName}.dll;osname=android;processor=${androidAbi}</bundleNativeCode>
@@ -461,9 +462,9 @@
         <extraCxxflags>-O3 -fno-omit-frame-pointer</extraCxxflags>
         <!-- On *nix, add ASM flags to disable executable stack -->
         <cmakeAsmFlags>-Wa,--noexecstack</cmakeAsmFlags>
-        <cmakeCFlags>${extraCflags} -DOPENSSL_C11_ATOMIC</cmakeCFlags>
+        <cmakeCFlags>${extraCflags}</cmakeCFlags>
         <!-- We need to define __STDC_CONSTANT_MACROS and __STDC_FORMAT_MACROS when building boringssl on centos 6 -->
-        <cmakeCxxFlags>${extraCxxflags} -DOPENSSL_C11_ATOMIC -Wno-error=maybe-uninitialized -Wno-error=shadow -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS</cmakeCxxFlags>
+        <cmakeCxxFlags>${extraCxxflags} -Wno-error=maybe-uninitialized -Wno-error=shadow -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS</cmakeCxxFlags>
         <libssl>libssl.a</libssl>
         <libcrypto>libcrypto.a</libcrypto>
         <libquiche>libquiche.a</libquiche>
@@ -487,6 +488,14 @@
       <id>leak</id>
       <properties>
         <test.argLine>-Dio.netty.leakDetectionLevel=paranoid -Dio.netty.leakDetection.targetRecords=32</test.argLine>
+      </properties>
+    </profile>
+
+    <!-- Build with unsafe disabled which also means the memory address cant be accessed-->
+    <profile>
+      <id>noUnsafe</id>
+      <properties>
+        <test.argLine>-Dio.netty.noUnsafe=true</test.argLine>
       </properties>
     </profile>
 
@@ -782,7 +791,7 @@
                       <equals arg1="${platform}" arg2="android" />
                       <then>
                         <exec executable="cargo" failonerror="true" dir="${quicheSourceDir}" resolveexecutable="true">
-                          <arg line="ndk ${cargoTarget} -p ${androidNdkVersion} -- build --features &quot;ffi qlog&quot; --release" />
+                          <arg line="ndk ${cargoTarget} -p ${androidNdkVersion} -- build --exclude quiche_apps --workspace --features &quot;ffi qlog&quot; --release" />
                           <env key="CFLAGS" value="${extraCflags}" />
                           <env key="CXXFLAGS" value="${extraCxxflags}" />
                           <env key="QUICHE_BSSL_PATH" value="${boringsslHomeDir}/" />
@@ -793,7 +802,7 @@
                           <equals arg1="${os.detected.name}" arg2="windows" />
                           <then>
                             <exec executable="cargo" failonerror="true" dir="${quicheSourceDir}" resolveexecutable="true">
-                              <arg line="build --features &quot;ffi qlog&quot; --release" />
+                              <arg line="build --exclude quiche_apps --workspace --features &quot;ffi qlog&quot; --release" />
                               <arg value="${cargoTarget}" />
                               <!-- See https://github.com/cloudflare/quiche/blob/0.7.0/src/build.rs#L73 -->
                               <env key="DEBUG" value="true" />
@@ -805,7 +814,7 @@
                             <equals arg1="${crossCompile}" arg2="linux" />
                             <then>
                               <exec executable="cargo" failonerror="true" dir="${quicheSourceDir}" resolveexecutable="true">
-                                <arg line="build --features &quot;ffi qlog&quot; --release" />
+                                <arg line="build --exclude quiche_apps --workspace --features &quot;ffi qlog&quot; --release" />
                                 <arg value="${cargoTarget}" />
                                 <env key="QUICHE_BSSL_PATH" value="${boringsslHomeDir}/" />
                                 <!-- Lets enable frame-pointers so we can profile better -->
@@ -818,7 +827,7 @@
                             <equals arg1="${crossCompile}" arg2="mac" />
                             <then>
                               <exec executable="cargo" failonerror="true" dir="${quicheSourceDir}" resolveexecutable="true">
-                                <arg line="build --features &quot;ffi qlog&quot; --release" />
+                                <arg line="build --exclude quiche_apps --workspace --features &quot;ffi qlog&quot; --release" />
                                 <env key="CFLAGS" value="${extraCflags}" />
                                 <env key="CXXFLAGS" value="${extraCxxflags}" />
                                 <arg value="${cargoTarget}" />
@@ -831,7 +840,7 @@
                           </elseif>
                           <else>
                             <exec executable="cargo" failonerror="true" dir="${quicheSourceDir}" resolveexecutable="true">
-                              <arg line="build --features &quot;ffi qlog&quot; --release" />
+                              <arg line="build --exclude quiche_apps --workspace --features &quot;ffi qlog&quot; --release" />
                               <env key="CFLAGS" value="${extraCflags}" />
                               <env key="CXXFLAGS" value="${extraCxxflags}" />
                               <env key="QUICHE_BSSL_PATH" value="${boringsslHomeDir}/" />
@@ -1090,6 +1099,7 @@
               <archive>
                 <manifest>
                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                  <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
                 </manifest>
                 <manifestEntries>
                   <Automatic-Module-Name>${javaModuleName}</Automatic-Module-Name>
@@ -1109,6 +1119,7 @@
               <archive>
                 <manifest>
                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                  <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
                 </manifest>
                 <manifestEntries>
                   <Automatic-Module-Name>${javaModuleNameWithClassifier}</Automatic-Module-Name>
@@ -1208,7 +1219,7 @@
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <version>1.3.8</version>
+      <version>1.3.12</version>
       <scope>test</scope>
     </dependency>
     <!-- Also include bouncycastle so we can use SelfSignedCertificate even on more recent JDKs during testing -->
@@ -1223,6 +1234,14 @@
       <artifactId>assertj-core</artifactId>
       <version>3.20.2</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains</groupId>
+      <artifactId>annotations</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
     </dependency>
   </dependencies>
 </project>

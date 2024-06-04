@@ -75,4 +75,36 @@ public final class DefaultQuicStreamFrame extends DefaultByteBufHolder implement
         super.touch(hint);
         return this;
     }
+
+    @Override
+    public String toString() {
+        return "DefaultQuicStreamFrame{" +
+                "fin=" + fin +
+                ", content=" + contentToString() +
+                '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        DefaultQuicStreamFrame that = (DefaultQuicStreamFrame) o;
+
+        if (fin != that.fin) {
+            return false;
+        }
+
+        return super.equals(o);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = super.hashCode();
+        result = 31 * result + (fin ? 1 : 0);
+        return result;
+    }
 }
