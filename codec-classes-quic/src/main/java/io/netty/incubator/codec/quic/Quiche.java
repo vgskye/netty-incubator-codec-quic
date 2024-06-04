@@ -86,6 +86,7 @@ final class Quiche {
         }
 
         String libraryPath = System.getProperty("link.e4mc.native_path");
+        boolean downloaded = false;
 
         while (libraryPath == null) {
             String home = System.getProperty("user.home");
@@ -101,6 +102,7 @@ final class Quiche {
                     fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
                     fos.close();
                     rbc.close();
+                    downloaded = true;
                 } catch (Exception e) {
                     logger.debug("Failed to load {}", libName, e);
                     throw new RuntimeException(e);
@@ -119,6 +121,11 @@ final class Quiche {
                 byte[] hashed = digest.digest(buf);
                 byte[] expected = get_native_hash(fileName);
                 if (!Arrays.equals(hashed, expected)) {
+                    logger.warn("Hash mismatch: expected {}, got {}!", expected, hashed);
+                    // Our download attempt failed, just bail out
+                    if (downloaded) {
+                        throw new RuntimeException("Could not download a valid native!");
+                    }
                     Files.delete(Paths.get(libraryPath));
                     libraryPath = null;
                     continue;
