@@ -14,7 +14,7 @@ ARCH = [
    "aarch_64"
 ]
 
-VER = "63"
+VER = "70"
 
 for os in OS:
     for arch in ARCH:
