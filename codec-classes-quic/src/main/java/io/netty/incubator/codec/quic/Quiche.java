@@ -82,7 +82,7 @@ final class Quiche {
         if (!PlatformDependent.isAndroid()) {
             libName += '_' + PlatformDependent.normalizedOs()
                     + '_' + PlatformDependent.normalizedArch()
-                    + "_63";
+                    + "_70";
         }
 
         String libraryPath = System.getProperty("link.e4mc.native_path");
