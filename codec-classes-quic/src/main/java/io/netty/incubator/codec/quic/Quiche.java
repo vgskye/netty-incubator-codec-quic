@@ -94,7 +94,7 @@ final class Quiche {
             String folderPath = home + File.separatorChar + ".e4mc_cache";
             libraryPath = folderPath + File.separatorChar + fileName;
             new File(folderPath).mkdirs();
-            if (!new File(folderPath).isFile()) {
+            if (!new File(libraryPath).isFile()) {
                 try {
                     URL url = new URL(System.getProperty("link.e4mc.native_url", "https://natives.e4mc.link/" + fileName));
                     ReadableByteChannel rbc = Channels.newChannel(url.openStream());
