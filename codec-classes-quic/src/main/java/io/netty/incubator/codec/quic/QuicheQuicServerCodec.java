@@ -16,6 +16,7 @@
 package io.netty.incubator.codec.quic;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOption;
@@ -70,7 +71,7 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
                           ChannelHandler streamHandler,
                           Map.Entry<ChannelOption<?>, Object>[] streamOptionsArray,
                           Map.Entry<AttributeKey<?>, Object>[] streamAttrsArray) {
-        super(config, localConnIdLength, tokenHandler.maxTokenLength(), flushStrategy);
+        super(config, localConnIdLength, flushStrategy);
         this.tokenHandler = tokenHandler;
         this.connectionIdAddressGenerator = connectionIdAddressGenerator;
         this.resetTokenGenerator = resetTokenGenerator;
@@ -87,7 +88,7 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
     @Override
     protected void handlerAdded(ChannelHandlerContext ctx, int localConnIdLength) {
         connIdBuffer = Quiche.allocateNativeOrder(localConnIdLength);
-        mintTokenBuffer = allocateNativeOrder(tokenHandler.maxTokenLength());
+        mintTokenBuffer = Unpooled.directBuffer(tokenHandler.maxTokenLength());
     }
 
     @Override
@@ -104,7 +105,7 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
     @Override
     @Nullable
     protected QuicheQuicChannel quicPacketRead(ChannelHandlerContext ctx, InetSocketAddress sender,
-                                               InetSocketAddress recipient, QuicPacketType type, int version,
+                                               InetSocketAddress recipient, QuicPacketType type, long version,
                                                ByteBuf scid, ByteBuf dcid, ByteBuf token,
                                                ByteBuf senderSockaddrMemory, ByteBuf recipientSockaddrMemory,
                                                Consumer<QuicheQuicChannel> freeTask, int localConnIdLength,
@@ -112,44 +113,45 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
             throws Exception {
         ByteBuffer dcidByteBuffer = dcid.internalNioBuffer(dcid.readerIndex(), dcid.readableBytes());
         QuicheQuicChannel channel = getChannel(dcidByteBuffer);
-        if (channel == null && type == QuicPacketType.ZERO_RTT && connectionIdAddressGenerator.isIdempotent()) {
-            // 0 rtt packet should obtain the server generated dcid
-            channel = getChannel(connectionIdAddressGenerator.newId(dcidByteBuffer, localConnIdLength));
-        }
-        if (channel == null) {
+        if (channel == null && type == QuicPacketType.INITIAL) {
+            // We only want to possibility create a new QuicChannel if this is the initial packet, otherwise
+            // drop the packet on the floor if we did not find a mapping before.
             return handleServer(ctx, sender, recipient, type, version, scid, dcid, token,
                     senderSockaddrMemory, recipientSockaddrMemory, freeTask, localConnIdLength, config);
         }
-
         return channel;
+    }
+
+    private static void writePacket(ChannelHandlerContext ctx, int res, ByteBuf buffer, InetSocketAddress sender)
+            throws Exception {
+        if (res < 0) {
+            buffer.release();
+            if (res != Quiche.QUICHE_ERR_DONE) {
+                throw Quiche.convertToException(res);
+            }
+        } else {
+            ctx.writeAndFlush(new DatagramPacket(buffer.writerIndex(buffer.writerIndex() + res), sender));
+        }
     }
 
     @Nullable
     private QuicheQuicChannel handleServer(ChannelHandlerContext ctx, InetSocketAddress sender,
                                            InetSocketAddress recipient,
-                                           @SuppressWarnings("unused") QuicPacketType type, int version,
+                                           @SuppressWarnings("unused") QuicPacketType type, long version,
                                            ByteBuf scid, ByteBuf dcid, ByteBuf token,
                                            ByteBuf senderSockaddrMemory, ByteBuf recipientSockaddrMemory,
                                            Consumer<QuicheQuicChannel> freeTask, int localConnIdLength,
-                                           QuicheConfig config)
-            throws Exception {
-        if (!Quiche.quiche_version_is_supported(version)) {
+                                           QuicheConfig config) throws Exception {
+        // Version is an unsigned int.
+        if (!Quiche.quiche_version_is_supported((int) version)) {
             // Version is not supported, try to negotiate it.
             ByteBuf out = ctx.alloc().directBuffer(Quic.MAX_DATAGRAM_SIZE);
-            int outWriterIndex = out.writerIndex();
 
             int res = Quiche.quiche_negotiate_version(
                     Quiche.readerMemoryAddress(scid), scid.readableBytes(),
                     Quiche.readerMemoryAddress(dcid), dcid.readableBytes(),
                     Quiche.writerMemoryAddress(out), out.writableBytes());
-            if (res < 0) {
-                out.release();
-                if (res != Quiche.QUICHE_ERR_DONE) {
-                    throw Quiche.convertToException(res);
-                }
-            } else {
-                ctx.writeAndFlush(new DatagramPacket(out.writerIndex(outWriterIndex + res), sender));
-            }
+            writePacket(ctx, res, out, sender);
             return null;
         }
 
@@ -163,33 +165,31 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
             // The remote peer did not send a token.
             if (tokenHandler.writeToken(mintTokenBuffer, dcid, sender)) {
                 ByteBuffer connId = connectionIdAddressGenerator.newId(
-                        dcid.internalNioBuffer(dcid.readerIndex(), dcid.readableBytes()), localConnIdLength);
+                        scid.internalNioBuffer(scid.readerIndex(), scid.readableBytes()),
+                        dcid.internalNioBuffer(dcid.readerIndex(), dcid.readableBytes()),
+                        localConnIdLength);
                 connIdBuffer.writeBytes(connId);
 
                 ByteBuf out = ctx.alloc().directBuffer(Quic.MAX_DATAGRAM_SIZE);
-                int outWriterIndex = out.writerIndex();
                 int written = Quiche.quiche_retry(
                         Quiche.readerMemoryAddress(scid), scid.readableBytes(),
                         Quiche.readerMemoryAddress(dcid), dcid.readableBytes(),
                         Quiche.readerMemoryAddress(connIdBuffer), connIdBuffer.readableBytes(),
                         Quiche.readerMemoryAddress(mintTokenBuffer), mintTokenBuffer.readableBytes(),
-                        version,
+                        // unsigned int.
+                        (int) version,
                         Quiche.writerMemoryAddress(out), out.writableBytes());
 
-                if (written < 0) {
-                    out.release();
-                    if (written != Quiche.QUICHE_ERR_DONE) {
-                        throw Quiche.convertToException(written);
-                    }
-                } else {
-                    ctx.writeAndFlush(new DatagramPacket(out.writerIndex(outWriterIndex + written), sender));
-                }
+                writePacket(ctx, written, out, sender);
                 return null;
             }
             offset = 0;
             noToken = true;
         } else {
-            offset = tokenHandler.validateToken(token, sender);
+            // Slice the token before pass it ot the QuicTokenHandler as the implementation might modify
+            // the readerIndex.
+            // See https://github.com/netty/netty-incubator-codec-quic/issues/742
+            offset = tokenHandler.validateToken(token.slice(), sender);
             if (offset == -1) {
                 if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("invalid token: {}", token.toString(CharsetUtil.US_ASCII));
@@ -207,7 +207,9 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
         if (noToken) {
             connIdBuffer.clear();
             key = connectionIdAddressGenerator.newId(
-                    dcid.internalNioBuffer(dcid.readerIndex(), dcid.readableBytes()), localConnIdLength);
+                    scid.internalNioBuffer(scid.readerIndex(), scid.readableBytes()),
+                    dcid.internalNioBuffer(dcid.readerIndex(), dcid.readableBytes()),
+                    localConnIdLength);
             connIdBuffer.writeBytes(key.duplicate());
             scidAddr = Quiche.readerMemoryAddress(connIdBuffer);
             scidLen = localConnIdLength;
@@ -221,8 +223,8 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
         } else {
             scidAddr = Quiche.readerMemoryAddress(dcid);
             scidLen = localConnIdLength;
-            ocidAddr = Quiche.memoryAddress(token, offset, token.readableBytes());
             ocidLen = token.readableBytes() - offset;
+            ocidAddr = Quiche.memoryAddress(token, offset, ocidLen);
             // Now create the key to store the channel in the map.
             byte[] bytes = new byte[localConnIdLength];
             dcid.getBytes(dcid.readerIndex(), bytes);
@@ -232,6 +234,11 @@ final class QuicheQuicServerCodec extends QuicheQuicCodec {
                 ctx.channel(), key, recipient, sender, config.isDatagramSupported(),
                 streamHandler, streamOptionsArray, streamAttrsArray, freeTask, sslTaskExecutor,
                 connectionIdAddressGenerator, resetTokenGenerator);
+
+        // We also need to add the original id as there might be multiple INITIAL packets.
+        byte[] originalId = new byte[dcid.readableBytes()];
+        dcid.getBytes(dcid.readerIndex(), originalId);
+        channel.sourceConnectionIds().add(ByteBuffer.wrap(originalId));
 
         Quic.setupChannel(channel, optionsArray, attrsArray, handler, LOGGER);
         QuicSslEngine engine = sslEngineProvider.apply(channel);

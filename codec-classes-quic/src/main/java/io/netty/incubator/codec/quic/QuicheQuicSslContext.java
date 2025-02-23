@@ -18,10 +18,15 @@ package io.netty.incubator.codec.quic;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.handler.ssl.ApplicationProtocolNegotiator;
 import io.netty.handler.ssl.ClientAuth;
+import io.netty.handler.ssl.SslContextOption;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.Mapping;
 import io.netty.util.ReferenceCounted;
+import io.netty.util.internal.EmptyArrays;
+import io.netty.util.internal.SystemPropertyUtil;
+import io.netty.util.internal.logging.InternalLogger;
+import io.netty.util.internal.logging.InternalLoggerFactory;
 import org.jetbrains.annotations.Nullable;
 
 import javax.crypto.NoSuchPaddingException;
@@ -46,8 +51,12 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
 import java.util.function.LongFunction;
@@ -55,6 +64,82 @@ import java.util.function.LongFunction;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 final class QuicheQuicSslContext extends QuicSslContext {
+
+    private static final InternalLogger LOGGER = InternalLoggerFactory.getInstance(QuicheQuicSslContext.class);
+
+    // Use default that is supported in java 11 and earlier and also in OpenSSL / BoringSSL.
+    // See https://github.com/netty/netty-tcnative/issues/567
+    // See https://www.java.com/en/configure_crypto.html for ordering
+    private static final String[] DEFAULT_NAMED_GROUPS = { "x25519", "secp256r1", "secp384r1", "secp521r1" };
+    private static final String[] NAMED_GROUPS;
+
+    static {
+        String[] namedGroups = DEFAULT_NAMED_GROUPS;
+        Set<String> defaultConvertedNamedGroups = new LinkedHashSet<>(namedGroups.length);
+        for (int i = 0; i < namedGroups.length; i++) {
+            defaultConvertedNamedGroups.add(GroupsConverter.toBoringSSL(namedGroups[i]));
+        }
+
+        // Call Quic.isAvailable() first to ensure native lib is loaded.
+        // See https://github.com/netty/netty-incubator-codec-quic/issues/759
+        if (Quic.isAvailable()) {
+            final long sslCtx = BoringSSL.SSLContext_new();
+            try {
+                // Let's filter out any group that is not supported from the default.
+                Iterator<String> defaultGroupsIter = defaultConvertedNamedGroups.iterator();
+                while (defaultGroupsIter.hasNext()) {
+                    if (BoringSSL.SSLContext_set1_groups_list(sslCtx, defaultGroupsIter.next()) == 0) {
+                        // Not supported, let's remove it. This could for example be the case if we use
+                        // fips and the configure group is not supported when using FIPS.
+                        // See https://github.com/netty/netty-tcnative/issues/883
+                        defaultGroupsIter.remove();
+                    }
+                }
+
+                String groups = SystemPropertyUtil.get("jdk.tls.namedGroups", null);
+                if (groups != null) {
+                    String[] nGroups = groups.split(",");
+                    Set<String> supportedNamedGroups = new LinkedHashSet<>(nGroups.length);
+                    Set<String> supportedConvertedNamedGroups = new LinkedHashSet<>(nGroups.length);
+
+                    Set<String> unsupportedNamedGroups = new LinkedHashSet<>();
+                    for (String namedGroup : nGroups) {
+                        String converted = GroupsConverter.toBoringSSL(namedGroup);
+                        if (BoringSSL.SSLContext_set1_groups_list(sslCtx, converted) == 0) {
+                            supportedConvertedNamedGroups.add(converted);
+                            supportedNamedGroups.add(namedGroup);
+                        } else {
+                            unsupportedNamedGroups.add(namedGroup);
+                        }
+                    }
+
+                    if (supportedNamedGroups.isEmpty()) {
+                        namedGroups = defaultConvertedNamedGroups.toArray(EmptyArrays.EMPTY_STRINGS);
+                        LOGGER.info("All configured namedGroups are not supported: {}. Use default: {}.",
+                                Arrays.toString(unsupportedNamedGroups.toArray(EmptyArrays.EMPTY_STRINGS)),
+                                Arrays.toString(DEFAULT_NAMED_GROUPS));
+                    } else {
+                        String[] groupArray = supportedNamedGroups.toArray(EmptyArrays.EMPTY_STRINGS);
+                        if (unsupportedNamedGroups.isEmpty()) {
+                            LOGGER.info("Using configured namedGroups -D 'jdk.tls.namedGroup': {} ",
+                                    Arrays.toString(groupArray));
+                        } else {
+                            LOGGER.info("Using supported configured namedGroups: {}. Unsupported namedGroups: {}. ",
+                                    Arrays.toString(groupArray),
+                                    Arrays.toString(unsupportedNamedGroups.toArray(EmptyArrays.EMPTY_STRINGS)));
+                        }
+                        namedGroups = supportedConvertedNamedGroups.toArray(EmptyArrays.EMPTY_STRINGS);
+                    }
+                } else {
+                    namedGroups = defaultConvertedNamedGroups.toArray(EmptyArrays.EMPTY_STRINGS);
+                }
+            } finally {
+                BoringSSL.SSLContext_free(sslCtx);
+            }
+        }
+        NAMED_GROUPS = namedGroups;
+    }
+
     final ClientAuth clientAuth;
     private final boolean server;
     @SuppressWarnings("deprecation")
@@ -74,7 +159,7 @@ final class QuicheQuicSslContext extends QuicSslContext {
                          @Nullable KeyManagerFactory keyManagerFactory, String password,
                          @Nullable Mapping<? super String, ? extends QuicSslContext> mapping,
                          @Nullable Boolean earlyData, @Nullable BoringSSLKeylog keylog,
-                         String... applicationProtocols) {
+                         String[] applicationProtocols, Map.Entry<SslContextOption<?>, Object>... ctxOptions) {
         Quic.ensureAvailability();
         this.server = server;
         this.clientAuth = server ? checkNotNull(clientAuth, "clientAuth") : ClientAuth.NONE;
@@ -100,6 +185,39 @@ final class QuicheQuicSslContext extends QuicSslContext {
         } else {
             keyManager = chooseKeyManager(keyManagerFactory);
         }
+        String[] groups = NAMED_GROUPS;
+        String[] sigalgs = EmptyArrays.EMPTY_STRINGS;
+        Map<String, String> serverKeyTypes = null;
+        Set<String> clientKeyTypes = null;
+
+        if (ctxOptions != null) {
+            for (Map.Entry<SslContextOption<?>, Object> ctxOpt : ctxOptions) {
+                SslContextOption<?> option = ctxOpt.getKey();
+
+                if (option == BoringSSLContextOption.GROUPS) {
+                    String[] groupsArray = (String[]) ctxOpt.getValue();
+                    Set<String> groupsSet = new LinkedHashSet<String>(groupsArray.length);
+                    for (String group : groupsArray) {
+                        groupsSet.add(GroupsConverter.toBoringSSL(group));
+                    }
+                    groups = groupsSet.toArray(EmptyArrays.EMPTY_STRINGS);
+                } else if (option == BoringSSLContextOption.SIGNATURE_ALGORITHMS) {
+                    String[] sigalgsArray = (String[]) ctxOpt.getValue();
+                    Set<String> sigalgsSet = new LinkedHashSet<String>(sigalgsArray.length);
+                    for (String sigalg : sigalgsArray) {
+                        sigalgsSet.add(sigalg);
+                    }
+                    sigalgs = sigalgsSet.toArray(EmptyArrays.EMPTY_STRINGS);
+                } else if (option == BoringSSLContextOption.CLIENT_KEY_TYPES) {
+                    clientKeyTypes = (Set<String>) ctxOpt.getValue();
+                } else if (option == BoringSSLContextOption.SERVER_KEY_TYPES) {
+                    serverKeyTypes = (Map<String, String>) ctxOpt.getValue();
+                } else {
+                    LOGGER.debug("Skipping unsupported " + SslContextOption.class.getSimpleName()
+                            + ": " + ctxOpt.getKey());
+                }
+            }
+        }
         final BoringSSLPrivateKeyMethod privateKeyMethod;
         if (keyManagerFactory instanceof  BoringSSLKeylessManagerFactory) {
             privateKeyMethod = new BoringSSLAsyncPrivateKeyMethodAdapter(engineMap,
@@ -111,32 +229,60 @@ final class QuicheQuicSslContext extends QuicSslContext {
         int verifyMode = server ? boringSSLVerifyModeForServer(this.clientAuth) : BoringSSL.SSL_VERIFY_PEER;
         nativeSslContext = new NativeSslContext(BoringSSL.SSLContext_new(server, applicationProtocols,
                 new BoringSSLHandshakeCompleteCallback(engineMap),
-                new BoringSSLCertificateCallback(engineMap, keyManager, password),
+                new BoringSSLCertificateCallback(engineMap, keyManager, password, serverKeyTypes, clientKeyTypes),
                 new BoringSSLCertificateVerifyCallback(engineMap, trustManager),
                 mapping == null ? null : new BoringSSLTlsextServernameCallback(engineMap, mapping),
                 keylog == null ? null : new BoringSSLKeylogCallback(engineMap, keylog),
                 server ? null : new BoringSSLSessionCallback(engineMap, sessionCache), privateKeyMethod,
                 sessionTicketCallback, verifyMode,
                 BoringSSL.subjectNames(trustManager.getAcceptedIssuers())));
-        apn = new QuicheQuicApplicationProtocolNegotiator(applicationProtocols);
-        if (this.sessionCache != null) {
-            // Cache is handled via our own implementation.
-            this.sessionCache.setSessionCacheSize((int) sessionCacheSize);
-            this.sessionCache.setSessionTimeout((int) sessionTimeout);
-        } else {
-            // Cache is handled by BoringSSL internally
-            BoringSSL.SSLContext_setSessionCacheSize(
-                    nativeSslContext.address(), sessionCacheSize);
-            this.sessionCacheSize = sessionCacheSize;
+        boolean success = false;
+        try {
+            if (groups.length > 0 && BoringSSL.SSLContext_set1_groups_list(nativeSslContext.ctx, groups) == 0) {
+                String msg = "failed to set curves / groups list: " + Arrays.toString(groups);
+                String lastError = BoringSSL.ERR_last_error();
+                if (lastError != null) {
+                    // We have some more details about why the operations failed, include these into the message.
+                    msg += ". " + lastError;
+                }
+                throw new IllegalStateException(msg);
+            }
 
-            BoringSSL.SSLContext_setSessionCacheTimeout(
-                    nativeSslContext.address(), sessionTimeout);
-            this.sessionTimeout = sessionTimeout;
+            if (sigalgs.length > 0 && BoringSSL.SSLContext_set1_sigalgs_list(nativeSslContext.ctx, sigalgs) == 0) {
+                String msg = "failed to set signature algorithm list: " + Arrays.toString(sigalgs);
+                String lastError = BoringSSL.ERR_last_error();
+                if (lastError != null) {
+                    // We have some more details about why the operations failed, include these into the message.
+                    msg += ". " + lastError;
+                }
+                throw new IllegalStateException(msg);
+            }
+
+            apn = new QuicheQuicApplicationProtocolNegotiator(applicationProtocols);
+            if (this.sessionCache != null) {
+                // Cache is handled via our own implementation.
+                this.sessionCache.setSessionCacheSize((int) sessionCacheSize);
+                this.sessionCache.setSessionTimeout((int) sessionTimeout);
+            } else {
+                // Cache is handled by BoringSSL internally
+                BoringSSL.SSLContext_setSessionCacheSize(
+                        nativeSslContext.address(), sessionCacheSize);
+                this.sessionCacheSize = sessionCacheSize;
+
+                BoringSSL.SSLContext_setSessionCacheTimeout(
+                        nativeSslContext.address(), sessionTimeout);
+                this.sessionTimeout = sessionTimeout;
+            }
+            if (earlyData != null) {
+                BoringSSL.SSLContext_set_early_data_enabled(nativeSslContext.address(), earlyData);
+            }
+            sessionCtx = new QuicheQuicSslSessionContext(this);
+            success = true;
+        } finally {
+            if (!success) {
+                nativeSslContext.release();
+            }
         }
-        if (earlyData != null) {
-            BoringSSL.SSLContext_set_early_data_enabled(nativeSslContext.address(), earlyData);
-        }
-        sessionCtx = new QuicheQuicSslSessionContext(this);
     }
 
     private X509ExtendedKeyManager chooseKeyManager(KeyManagerFactory keyManagerFactory) {

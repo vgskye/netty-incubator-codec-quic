@@ -366,15 +366,6 @@ static jboolean netty_quiche_conn_set_qlog_path(JNIEnv* env, jclass clazz, jlong
     return ret == true ? JNI_TRUE : JNI_FALSE;
 }
 
-static jint netty_quiche_header_info(JNIEnv* env, jclass clazz, jlong buf, jint buf_len, jint dcil, jlong version,
-                 jlong type, jlong scid, jlong scid_len, jlong dcid, jlong dcid_len, jlong token, jlong token_len) {
-    return (jint) quiche_header_info((const uint8_t *) buf, (size_t) buf_len, (size_t) dcil,
-                                         (uint32_t *) version, (uint8_t *) type,
-                                         (uint8_t *) scid, (size_t *) scid_len,
-                                         (uint8_t *) dcid, (size_t *) dcid_len,
-                                         (uint8_t *) token, (size_t *) token_len);
-}
-
 static jint netty_quiche_negotiate_version(JNIEnv* env, jclass clazz, jlong scid, jint scid_len, jlong dcid, jint dcid_len, jlong out, jint out_len) {
     return (jint) quiche_negotiate_version((const uint8_t *) scid, (size_t) scid_len,
                                                    (const uint8_t *) dcid, (size_t) dcid_len,
@@ -473,6 +464,9 @@ static jobjectArray netty_quiche_conn_peer_error0(JNIEnv* env, jclass clazz, jlo
                             &reason_len);
     if (peer_error) {
         jobjectArray array = (*env)->NewObjectArray(env, 3, object_class, NULL);
+        if (array == NULL) {
+            return NULL;
+        }
         (*env)->SetObjectArrayElement(env, array, 0, (*env)->CallStaticObjectMethod(env, boolean_class, boolean_class_valueof, is_app ? JNI_TRUE : JNI_FALSE));
         (*env)->SetObjectArrayElement(env, array, 1, (*env)->CallStaticObjectMethod(env, integer_class, integer_class_valueof, (jint) error_code));
         (*env)->SetObjectArrayElement(env, array, 2, to_byte_array(env, reason, reason_len));
@@ -742,6 +736,9 @@ static jobjectArray netty_quiche_conn_path_stats(JNIEnv* env, jclass clazz, jlon
     }
 
     jobjectArray array = (*env)->NewObjectArray(env, 16, object_class, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
     (*env)->SetObjectArrayElement(env, array, 0, localAddr);
     (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
     (*env)->SetObjectArrayElement(env, array, 2, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) stats.validation_state));
@@ -779,6 +776,9 @@ static jobjectArray netty_quiche_path_event_new(JNIEnv* env, jclass clazz, jlong
     }
 
     jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
     (*env)->SetObjectArrayElement(env, array, 0, localAddr);
     (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
     return array;
@@ -802,6 +802,9 @@ static jobjectArray netty_quiche_path_event_validated(JNIEnv* env, jclass clazz,
     }
 
     jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
     (*env)->SetObjectArrayElement(env, array, 0, localAddr);
     (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
     return array;
@@ -825,6 +828,9 @@ static jobjectArray netty_quiche_path_event_failed_validation(JNIEnv* env, jclas
     }
 
     jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
     (*env)->SetObjectArrayElement(env, array, 0, localAddr);
     (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
     return array;
@@ -848,6 +854,9 @@ static jobjectArray netty_quiche_path_event_closed(JNIEnv* env, jclass clazz, jl
     }
 
     jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
     (*env)->SetObjectArrayElement(env, array, 0, localAddr);
     (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
     return array;
@@ -883,6 +892,9 @@ static jobjectArray netty_quiche_path_event_reused_source_connection_id(JNIEnv* 
         return NULL;
     }
     jobjectArray array = (*env)->NewObjectArray(env, 5, object_class, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
     (*env)->SetObjectArrayElement(env, array, 0, (*env)->CallStaticObjectMethod(env, long_class, long_class_valueof, (jlong) id));
     (*env)->SetObjectArrayElement(env, array, 1, localOldAddr);
     (*env)->SetObjectArrayElement(env, array, 2, peerOldAddr);
@@ -908,6 +920,9 @@ static jobjectArray netty_quiche_path_event_peer_migrated(JNIEnv* env, jclass cl
     }
 
     jobjectArray array = (*env)->NewObjectArray(env, 2, object_class, NULL);
+    if (array == NULL) {
+        return NULL;
+    }
     (*env)->SetObjectArrayElement(env, array, 0, localAddr);
     (*env)->SetObjectArrayElement(env, array, 1, peerAddr);
     return array;
@@ -980,6 +995,10 @@ static void netty_quiche_config_set_disable_active_migration(JNIEnv* env, jclass
 
 static void netty_quiche_config_set_cc_algorithm(JNIEnv* env, jclass clazz, jlong config, jint algo) {
     quiche_config_set_cc_algorithm((quiche_config*) config, (enum quiche_cc_algorithm) algo);
+}
+
+static void netty_quiche_config_set_initial_congestion_window_packets(JNIEnv* env, jclass clazz, jlong config, jint value) {
+    quiche_config_set_initial_congestion_window_packets((quiche_config*) config, (size_t) value);
 }
 
 static void netty_quiche_config_enable_hystart(JNIEnv* env, jclass clazz, jlong config, jboolean value) {
@@ -1144,7 +1163,6 @@ static const jint statically_referenced_fixed_method_table_size = sizeof(statica
 static const JNINativeMethod fixed_method_table[] = {
   { "quiche_version", "()Ljava/lang/String;", (void *) netty_quiche_version },
   { "quiche_version_is_supported", "(I)Z", (void *) netty_quiche_version_is_supported },
-  { "quiche_header_info", "(JIIJJJJJJJJ)I", (void *) netty_quiche_header_info },
   { "quiche_negotiate_version", "(JIJIJI)I", (void *) netty_quiche_negotiate_version },
   { "quiche_retry", "(JIJIJIJIIJI)I", (void *) netty_quiche_retry },
   { "quiche_conn_set_qlog_path", "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z", (void *) netty_quiche_conn_set_qlog_path },
@@ -1203,6 +1221,7 @@ static const JNINativeMethod fixed_method_table[] = {
   { "quiche_config_set_max_ack_delay", "(JJ)V", (void *) netty_quiche_config_set_max_ack_delay },
   { "quiche_config_set_disable_active_migration", "(JZ)V", (void *) netty_quiche_config_set_disable_active_migration },
   { "quiche_config_set_cc_algorithm", "(JI)V", (void *) netty_quiche_config_set_cc_algorithm },
+  { "quiche_config_set_initial_congestion_window_packets", "(JI)V", (void *) netty_quiche_config_set_initial_congestion_window_packets },
   { "quiche_config_enable_hystart", "(JZ)V", (void *) netty_quiche_config_enable_hystart },
   { "quiche_config_set_active_connection_id_limit", "(JJ)V", (void *) netty_quiche_config_set_active_connection_id_limit },
   { "quiche_config_set_stateless_reset_token", "(J[B)V", (void *) netty_quiche_config_set_stateless_reset_token },

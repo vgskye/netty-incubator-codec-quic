@@ -24,7 +24,7 @@
 
   <groupId>io.netty.incubator</groupId>
   <artifactId>netty-incubator-codec-parent-quic</artifactId>
-  <version>0.0.63.Final</version>
+  <version>0.0.70.Final</version>
   <name>Netty/Incubator/Codec/Parent/Quic</name>
   <packaging>pom</packaging>
   <url>https://netty.io/</url>
@@ -51,7 +51,7 @@
     <url>https://github.com/netty/netty-incubator-codec-quic</url>
     <connection>scm:git:git://github.com/netty/netty-incubator-codec-quic.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/netty/netty-incubator-codec-quic.git</developerConnection>
-    <tag>netty-incubator-codec-parent-quic-0.0.63.Final</tag>
+    <tag>netty-incubator-codec-parent-quic-0.0.70.Final</tag>
   </scm>
 
   <developers>
@@ -74,7 +74,7 @@
     <javaModuleName />
     <skipTests>false</skipTests>
     <packaging.type>jar</packaging.type>
-    <netty.version>4.1.110.Final</netty.version>
+    <netty.version>4.1.116.Final</netty.version>
     <netty.build.version>31</netty.build.version>
     <netty.jni-util.version>0.0.9.Final</netty.jni-util.version>
     <junit.version>5.9.0</junit.version>
@@ -120,7 +120,7 @@
         </plugin>
         <plugin>
           <artifactId>maven-compiler-plugin</artifactId>
-          <version>3.8.0</version>
+          <version>3.13.0</version>
         </plugin>
         <plugin>
           <artifactId>maven-checkstyle-plugin</artifactId>
@@ -207,6 +207,7 @@
           <fork>true</fork>
           <source>1.8</source>
           <target>1.8</target>
+          <release>8</release>
           <debug>true</debug>
           <optimize>true</optimize>
           <showDeprecation>true</showDeprecation>

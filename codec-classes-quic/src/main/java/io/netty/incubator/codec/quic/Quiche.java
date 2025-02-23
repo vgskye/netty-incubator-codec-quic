@@ -402,12 +402,6 @@ final class Quiche {
     static native boolean quiche_version_is_supported(int version);
 
     /**
-     * See <a href="https://github.com/cloudflare/quiche/blob/0.6.0/include/quiche.h#L196">quiche_header_info</a>.
-     */
-    static native int quiche_header_info(long bufAddr, int bufLength, int dcil, long versionAddr, long typeAddr,
-                                         long scidAddr, long scidLenAddr, long dcidAddr, long dcidLenAddr,
-                                         long tokenAddr, long tokenLenAddr);
-    /**
      * See <a href="https://github.com/cloudflare/quiche/blob/0.6.0/include/quiche.h#L215">quiche_negotiate_version</a>.
      */
     static native int quiche_negotiate_version(
@@ -777,6 +771,14 @@ final class Quiche {
 
     /**
      * See
+     * <a href="https://github.com/cloudflare/quiche/blob/0.21.0/quiche/include/quiche.h#L222">
+     *     quiche_config_set_initial_congestion_window_packets</a>
+     *
+     */
+    static native void quiche_config_set_initial_congestion_window_packets(long configAddr, int numPackets);
+
+    /**
+     * See
      * <a href="https://github.com/cloudflare/quiche/blob/0.6.0/include/quiche.h#184">
      *     quiche_config_enable_hystart</a>.
      */
@@ -968,7 +970,10 @@ final class Quiche {
 
     static Exception convertToException(int result) {
         QuicTransportErrorHolder holder = ERROR_MAPPINGS.get(result);
-        assert holder != null;
+        if (holder == null) {
+            // There is no mapping to a transport error, it's something internal so throw it directly.
+            return new QuicException(QuicheError.valueOf(result).message());
+        }
         Exception exception = new QuicException(holder.error + ": " + holder.quicheErrorName, holder.error);
         if (result == QUICHE_ERR_TLS_FAIL) {
             String lastSslError = BoringSSL.ERR_last_error();
