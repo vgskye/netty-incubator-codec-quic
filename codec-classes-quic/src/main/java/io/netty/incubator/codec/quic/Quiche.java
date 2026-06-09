@@ -39,6 +39,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.Objects;
 
 final class Quiche {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(Quiche.class);
@@ -89,11 +90,26 @@ final class Quiche {
         boolean downloaded = false;
 
         while (libraryPath == null) {
-            String home = System.getProperty("user.home");
-            String fileName = System.mapLibraryName(libName);
-            String folderPath = home + File.separatorChar + ".e4mc_cache";
-            libraryPath = folderPath + File.separatorChar + fileName;
+            String fileName;
+            String folderPath;
+            if (Objects.equals(PlatformDependent.normalizedOs(), "linux")) { // use XDG_CACHE_HOME on Linux, see https://github.com/vgskye/e4mc-minecraft-architectury/issues/243
+                String xdgCacheHome = System.getenv("XDG_CACHE_HOME");
+                if (xdgCacheHome == null) {
+                    xdgCacheHome = Paths.get(System.getProperty("user.home"), ".cache").toString();
+                }
+
+                fileName = System.mapLibraryName(libName);
+                folderPath = Paths.get(xdgCacheHome, "e4mc_cache").toString();
+                libraryPath = Paths.get(folderPath, fileName).toString();
+            } else {
+                String home = System.getProperty("user.home");
+                fileName = System.mapLibraryName(libName);
+                folderPath = home + File.separatorChar + ".e4mc_cache";
+                libraryPath = folderPath + File.separatorChar + fileName;
+            }
+
             new File(folderPath).mkdirs();
+
             if (!new File(libraryPath).isFile()) {
                 try {
                     URL url = new URL(System.getProperty("link.e4mc.native_url", "https://natives.e4mc.link/" + fileName));
