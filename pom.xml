@@ -33,7 +33,7 @@
 
   <groupId>io.netty.incubator</groupId>
   <artifactId>netty-incubator-codec-parent-quic</artifactId>
-  <version>0.0.74.Final.e4mc</version>
+  <version>0.0.74.Final.e4mc.1</version>
   <name>Netty/Incubator/Codec/Parent/Quic</name>
   <packaging>pom</packaging>
   <url>https://netty.io/</url>

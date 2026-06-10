@@ -23,7 +23,7 @@
   </parent>
 
   <artifactId>netty-incubator-codec-classes-quic</artifactId>
-  <version>0.0.74.Final.e4mc</version>
+  <version>0.0.74.Final.e4mc.1</version>
   <name>Netty/Incubator/Codec/Classes/Quic</name>
   <packaging>jar</packaging>
 
@@ -59,6 +59,11 @@
   </build>
 
   <dependencies>
+    <dependency>
+      <groupId>dev.dirs</groupId>
+      <artifactId>directories</artifactId>
+      <version>26</version>
+    </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-common</artifactId>
