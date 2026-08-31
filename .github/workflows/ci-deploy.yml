@@ -16,11 +16,11 @@
 name: Deploy project
 
 on:
-  push:
-    branches: [ main ]
-
-  schedule:
-    - cron: '30 7 * * 1'  # At 07:30 on Monday, every Monday.
+#  push:
+#    branches: [ main ]
+#
+#  schedule:
+#    - cron: '30 7 * * 1'  # At 07:30 on Monday, every Monday.
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
